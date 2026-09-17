@@ -13,14 +13,15 @@ When implementing, use this precedence:
 3. `PACKET_DELIVERY_CONTRACT.md`;
 4. `STANDALONE_TDECK_REQUIREMENTS.md` + `MESSAGE_STORE_DESIGN.md`;
 5. `ENERGY_MANAGEMENT_CONTRACT.md`;
-6. `API_CONTRACTS.md`;
-7. `ROUTING_SPEC_DRAFT.md`;
-8. `BUILD_CONFIG_MATRIX.md`;
-9. `UI_UX_CONTRACT.md`;
-10. `FEATURE_MANIFEST.md`;
-11. `TEST_TRACEABILITY.md`;
-12. `IMPLEMENTATION_BLUEPRINT.md`;
-13. `RESOURCE_BUDGET.md` and remaining review/test documents.
+6. `IP_GATEWAY_FEDERATION_CONTRACT.md`;
+7. `API_CONTRACTS.md`;
+8. `ROUTING_SPEC_DRAFT.md`;
+9. `BUILD_CONFIG_MATRIX.md`;
+10. `UI_UX_CONTRACT.md`;
+11. `FEATURE_MANIFEST.md`;
+12. `TEST_TRACEABILITY.md`;
+13. `IMPLEMENTATION_BLUEPRINT.md`;
+14. `RESOURCE_BUDGET.md` and remaining review/test documents.
 
 If two normative documents conflict, do not guess. Resolve the conflict in the smallest possible ADR/doc correction, then continue coding.
 
@@ -43,11 +44,14 @@ Follow `IMPLEMENTATION_BLUEPRINT.md` in order:
 7. ReliabilityManager + dedup;
 8. multipath/failover + energy-aware route scoring;
 9. ESP-NOW Normal + Long Range capability in one adapter;
-10. event-driven delayed delivery;
-11. health/metrics/RF intelligence/energy metrics;
-12. smartphone-like UI integration;
-13. optional Ambient RF Energy Assist provider seam/mock;
-14. optional lab transports only after stable core.
+10. IP backhaul + GatewayManager/GatewayDiscovery + Wi-Fi provider;
+11. event-driven delayed delivery across radio/IP recovery;
+12. health/metrics/RF intelligence/energy/gateway metrics;
+13. smartphone-like UI integration;
+14. optional Ambient RF Energy Assist provider seam/mock;
+15. optional lab transports/advanced federation only after stable core.
+
+Cellular is implemented inside the IP-backhaul phase only after a specific compatible modem target is selected; compile-only generic cellular claims are not treated as hardware support.
 
 ## Coding behavior
 
@@ -76,6 +80,10 @@ driver shims
 ESP-IDF/vendor integration glue
 simulator models
 EnergyManager providers
+IP NetifProviders
+mog_transport_ip
+GatewayManager / GatewayDiscovery
+federation framing/session logic
 mock/unavailable hardware providers
 UI bindings
 health/metrics plumbing
@@ -117,23 +125,30 @@ Do not paper over a failure by:
 - adding an unbounded queue;
 - duplicating a routing engine;
 - duplicating an energy-policy engine;
+- treating GatewayManager as a second routing authority;
+- resetting PacketId/chat because a message crosses IP;
+- equating socket/TLS write success with end-to-end delivery;
 - bypassing AirtimeManager;
-- moving required persistent state to microSD;
+- moving required persistent state to microSD/cloud;
+- making one cloud server mandatory for local messaging;
 - marking simulator-only behavior as hardware validated;
 - claiming ambient-RF harvesting without compatible measured hardware.
 
 ## Professional controller pass after every major layer
 
-After Storage, EnergyManager, HybridRouter, Multipath, ESP-NOW and UI milestones, perform a red-team review:
+After Storage, EnergyManager, HybridRouter, Multipath, ESP-NOW, IP/Gateway and UI milestones, perform a red-team review:
 
 - can a failure in this layer break LoRa-only operation?
-- are all queues/tables bounded?
+- are all queues/tables/sessions bounded?
 - can reboot/power loss corrupt unrelated durable state?
 - can one stale event park the state machine forever?
 - can duplicate events cause repeated user messages?
-- can radio or energy recovery create retry storms?
+- can radio, gateway or energy recovery create retry storms?
 - can energy-state noise cause route/power-mode flapping?
 - can an optional harvester provider fail without affecting stock T-Deck operation?
+- can Internet/bootstrap loss split the chat or erase local message history?
+- can unauthenticated/malformed gateway data consume unbounded resources?
+- does public federation avoid requiring plaintext user-message content?
 - did flash/RAM/PSRAM grow beyond the recorded budget?
 - is the normal UI still simpler than the internal architecture?
 
@@ -145,6 +160,8 @@ Once code exists, continuously preserve:
 
 - `CFG-LORA-STABLE`;
 - `CFG-HYBRID-BETA` once ESP-NOW lands;
+- `CFG-IP-BETA` once IP backhaul lands;
+- `CFG-GATEWAY-BETA` once federation/gateway listener code exists;
 - `CFG-ENERGY-LAB` once the harvesting-provider seam exists;
 - host/unit tests;
 - simulator tests.
@@ -164,23 +181,33 @@ Power on
 -> Send
 ```
 
+The same contact stays in one conversation even when one message uses LoRa and the next uses IP/gateway federation.
+
 If unreachable:
 
 ```text
 Waiting for connection
 -> internally queued
--> usable link/route returns later
+-> usable radio/IP/gateway route returns later
 -> automatic retry
 -> Delivered
 ```
 
-No second Send press and no transport/route engineering by the user.
+No second Send press and no per-message transport/route/gateway engineering by the user.
 
 Energy-saving states are automatic. Normal users do not manage rectifier, MPPT, supercapacitor or route-energy parameters.
 
 ## ESP-NOW rule
 
 Normal ESP-NOW and ESP-NOW Long Range are capabilities/modes of one adapter. The router uses measured link evidence. The user is not required to select NORMAL versus LR. If ESP-NOW is unavailable or unhealthy, the system falls back to another valid route/LoRa according to policy.
+
+## IP/gateway rule
+
+Wi-Fi and cellular are bearer providers of one `mog_transport_ip`. GatewayManager/GatewayDiscovery provide bounded authenticated reachability evidence; `HybridRouter` remains the routing authority.
+
+Normal Wi-Fi access points are IP access media, not unconfigured Firmware-mash relays. Cellular requires actual supported modem/network access. Handhelds use outbound authenticated sessions by default; public inbound listeners are gateway-class functionality.
+
+The initial federation must support more than one configured/learned peer and must continue using already-established peers if a bootstrap endpoint disappears. Loss of all Internet paths falls back to radio/store-forward rather than breaking the conversation model.
 
 ## Energy-management rule
 
@@ -198,6 +225,10 @@ Implementation is not complete until:
 - the no-SD requirement remains true;
 - EnergyManager works without RF-harvest hardware;
 - optional harvesting code can be compiled out without regression;
+- IP/gateway code can be compiled out while CFG-LORA-STABLE still works;
+- IP beta preserves the same PacketId/chat across route changes;
+- gateway/bootstrap failure has bounded recovery behavior;
+- cellular claims are made only for real selected hardware evidence;
 - the one-flash release contract remains achievable;
 - resource budgets are measured, not guessed;
 - no unresolved architecture contradiction remains.
@@ -212,6 +243,9 @@ The user should not be asked to:
 - debug peer caches;
 - manually retry queued messages;
 - choose ESP-NOW Normal/LR for each message;
+- choose LoRa/Wi-Fi/cellular/gateway per message;
+- maintain separate chats for Internet/off-grid delivery;
+- configure federation peer tables for ordinary use;
 - tune energy-state thresholds;
 - configure harvester electronics for normal stable operation;
 - combine separate firmware binaries;
