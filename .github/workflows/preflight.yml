@@ -29,6 +29,14 @@ jobs:
             docs/REPOSITORY_LAYOUT.md
             docs/RESOURCE_BUDGET.md
             docs/USER_RELEASE_CONTRACT.md
+            docs/UI_UX_CONTRACT.md
+            docs/FEATURE_MANIFEST.md
+            docs/IMPLEMENTATION_BLUEPRINT.md
+            docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md
+            docs/PACKET_DELIVERY_CONTRACT.md
+            docs/MESSAGE_STORE_DESIGN.md
+            docs/BUILD_CONFIG_MATRIX.md
+            docs/TEST_TRACEABILITY.md
             docs/ARCHITECTURE.md
             docs/API_CONTRACTS.md
             docs/ROUTING_SPEC_DRAFT.md
@@ -123,7 +131,6 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f docs/BASELINE_APPROVED ]; then
-            # Once code exists, TODOs are allowed but fake validation labels are not.
             if grep -RInE 'hardware[ -]?validated[[:space:]]*:[[:space:]]*(yes|true)' components main firmware src 2>/dev/null \
               | grep -viE 'test|mock|example'; then
               echo 'Found a hardware-validated claim in source; validation belongs in evidence/docs, not hard-coded claims.'
