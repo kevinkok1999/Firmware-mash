@@ -202,6 +202,56 @@ int mog_store_snapshot_validate(const char *path,
     return MOG_STORE_OK;
 }
 
+int mog_store_snapshot_read(const char *path,
+                            uint32_t expected_record_size,
+                            void *records,
+                            uint32_t records_capacity,
+                            mog_store_snapshot_info_t *out_info) {
+    mog_store_snapshot_info_t info = {0};
+    int rc = mog_store_snapshot_validate(path, expected_record_size, &info);
+    if (rc != MOG_STORE_OK) {
+        return rc;
+    }
+
+    if (info.record_count > records_capacity) {
+        return MOG_STORE_ERR_SIZE;
+    }
+    if (info.record_count > 0 && !records) {
+        return MOG_STORE_ERR_ARG;
+    }
+
+    size_t payload_size = 0;
+    rc = checked_payload_size(info.record_count, info.record_size, &payload_size);
+    if (rc != MOG_STORE_OK) {
+        return rc;
+    }
+
+    if (payload_size > 0) {
+        FILE *f = fopen(path, "rb");
+        if (!f) {
+            return MOG_STORE_ERR_IO;
+        }
+        if (fseek(f, (long)sizeof(mog_store_disk_header_t), SEEK_SET) != 0 ||
+            fread(records, 1, payload_size, f) != payload_size) {
+            fclose(f);
+            return MOG_STORE_ERR_IO;
+        }
+        if (fclose(f) != 0) {
+            return MOG_STORE_ERR_IO;
+        }
+
+        /* Protect against a file being changed between validate() and read(). */
+        if (mog_store_crc32(records, payload_size, 0) != info.payload_crc32) {
+            return MOG_STORE_ERR_CRC;
+        }
+    }
+
+    if (out_info) {
+        *out_info = info;
+    }
+    return MOG_STORE_OK;
+}
+
 static int copy_path(char *out, size_t out_size, const char *path) {
     const size_t required = strlen(path) + 1;
     if (!out || out_size < required) {
