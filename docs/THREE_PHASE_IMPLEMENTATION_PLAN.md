@@ -10,7 +10,7 @@ Every change is reviewed from three roles before promotion:
 2. **Reliability reviewer** — power loss, reboot, queue pressure, ACK/dedup, storage integrity, bounded retries and failure recovery.
 3. **Integration/release reviewer** — pinned foundation, host/target builds, config matrix, reproducibility, artifact/flash/recovery correctness.
 
-A phase passes only when all three concerns are satisfied. A later phase may not hide or work around a failure in an earlier phase.
+A phase passes only when all three concerns are satisfied. A later phase may be coded in isolation for host-testable primitives, but it may not be integrated/promoted to the target build until the previous phase gate is green. A higher layer may never hide or work around a lower-layer failure.
 
 ---
 
@@ -24,16 +24,18 @@ Required implementation/evidence:
 - ESP-IDF/toolchain pin preserved;
 - T-Deck Plus board target preserved;
 - internal storage has no mandatory microSD dependency;
-- `components/mog_message_store/` host-testable transaction/snapshot logic;
-- power-loss-safe compaction/rollover integration design;
-- PacketId/identity/time/event primitives must be reboot-safe before Phase 2 depends on them;
+- `components/mog_message_store/` host-testable transaction/snapshot/journal/recovery logic;
+- power-loss-safe compaction/rollover integrated below Bramble's existing `msg_store_spiffs_*` API;
+- durable-record layout drift is compile-time guarded until an explicit versioned migration exists;
 - host tests use `-Wall -Wextra -Werror`;
-- fault tests cover torn slot, corrupt payload, wrong schema and fallback to previous committed generation;
+- fault tests cover torn slot, corrupt payload, wrong schema, journal tail repair, reboot recovery and fallback to a previous committed generation;
 - target integration must never erase identity/config because message storage is unhealthy.
 
 **Phase 1 gate:** `bash scripts/phase-gate.sh 1`
 
-Promotion rule: Phase 2 does not start until the Phase 1 gate passes in a clean checkout. Physical power-cut and no-SD hardware evidence remains a STABLE release gate even after host/simulator tests pass.
+Promotion rule: Phase 2 target integration does not start until the Phase 1 gate passes in a clean checkout. Host-testable Phase-2 primitives may be developed in parallel, but they remain unintegrated/unpromoted while Phase 1 evidence is red. Physical power-cut and no-SD hardware evidence remains a STABLE release gate even after host/simulator tests pass.
+
+Current external blocker: repository issue #19 tracks GitHub-hosted runners remaining queued before step 1. This is infrastructure evidence, not a reason to weaken the Phase-1 gate.
 
 ---
 
@@ -43,16 +45,18 @@ Promotion rule: Phase 2 does not start until the Phase 1 gate passes in a clean 
 
 Build order inside the phase:
 
-1. `mog_core` / PacketId / lifecycle / event ownership;
-2. `mog_energy` policy seam;
-3. LoRa transport + single AirtimeManager ownership;
-4. neighbor state + HybridRouter LoRa-only seam;
-5. ReliabilityManager: ACK/retry/dedup/delayed delivery;
-6. multipath and route scoring with hysteresis;
-7. custody/store-carry-forward on durable storage;
-8. ESP-NOW Normal/LR behind one adapter and RadioScheduler;
-9. IP backhaul + Wi-Fi NetifProvider + GatewayManager/federation;
-10. cellular NetifProvider only after selected modem hardware is proven.
+1. `mog_core` / PacketId / lifecycle / monotonic-time / event ownership;
+2. `mog_conversation` + `mog_messaging` identity and same-chat continuity;
+3. `mog_energy` policy seam;
+4. LoRa transport + single AirtimeManager ownership;
+5. neighbor state + HybridRouter LoRa-only seam;
+6. ReliabilityManager: E2E ACK/retry/dedup/delayed delivery;
+7. multipath and route scoring with hysteresis;
+8. custody/store-carry-forward on durable storage;
+9. ESP-NOW Normal/LR behind one adapter and RadioScheduler;
+10. IP backhaul + Wi-Fi NetifProvider + GatewayManager/federation;
+11. cellular NetifProvider only after selected modem hardware is proven;
+12. health/metrics/replay hooks required for field diagnosis.
 
 Hard invariants:
 
@@ -76,7 +80,7 @@ Minimum Phase 2 build profiles:
 
 **Phase 2 gate:** `bash scripts/phase-gate.sh 2`
 
-The gate intentionally remains red until these components and their tests actually exist.
+The gate intentionally remains red until these components and their tests actually exist. `test/run_phase2_tests.sh` is the single Phase-2 test entry point and must fail closed when mandatory suites/configs are absent.
 
 ---
 
@@ -101,7 +105,21 @@ Required product work:
 
 **Phase 3 gate:** `bash scripts/phase-gate.sh 3`
 
-Only after Phase 3 passes may `.github/workflows/release-package.yml` produce a user-facing flash artifact.
+`test/run_phase3_tests.sh` and `scripts/release-package.sh` are the only approved product/release entry points. Both must fail closed until their required evidence exists. Only after Phase 3 passes may `.github/workflows/release-package.yml` produce a user-facing flash artifact.
+
+---
+
+## Preparation status vs implementation status
+
+The **three-phase preparation is complete** when the contracts, build order, gates, test entry points and release rules are present. That means coding can begin.
+
+It does **not** mean Phases 1–3 implementation have already passed. Implementation promotion remains evidence-based:
+
+- Phase 1 becomes green only after its current overlay actually executes host + T-Deck target gates;
+- Phase 2 becomes green only after the communication engine/tests/config matrix pass;
+- Phase 3 becomes green only after product/release/hardware evidence passes.
+
+This distinction prevents a planning-complete project from being mislabeled as a tested firmware release.
 
 ---
 
