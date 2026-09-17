@@ -21,6 +21,20 @@ Transport-local sequence numbers, gateway session IDs and custody-transfer epoch
 
 Conversation identity is independent from transport/path. One contact remains one chat regardless of which transport or gateway delivered each message.
 
+### PacketId generation safety
+
+A reboot must never reset PacketId generation to a simple volatile counter that can collide with an earlier packet from the same identity.
+
+The implementation must use the selected foundation's proven identity/message-ID mechanism where available. If Firmware-mash must provide the generator, it must combine durable/non-repeating state and/or cryptographically strong randomness from maintained platform APIs so that a reboot, power cut or rollback cannot realistically recreate a live PacketId.
+
+Hard rules:
+
+- PacketId generation happens before any transport/path selection;
+- no timestamp-only or `boot_counter << n | local_counter` construction unless its persistence/wrap properties are proven;
+- factory reset/identity replacement is treated as a new identity epoch;
+- rollback to an older firmware image must not roll PacketId state backward into a collision window;
+- PacketId generation is unit/fault tested across reboot and interrupted persistence.
+
 ## Delivery states
 
 Normative logical user-message states:
@@ -82,6 +96,20 @@ Hard rules:
 
 Full semantics are in `STORE_CARRY_CUSTODY_CONTRACT.md` and ADR 0008.
 
+## Custody/delivery race rule
+
+A destination delivery ACK is terminal truth for that PacketId and dominates any in-flight custody negotiation.
+
+If `DELIVERY_ACK(PacketId)` arrives while a custody offer/accept/reconciliation is pending:
+
+1. ReliabilityManager marks the logical message delivered exactly once;
+2. new custody offers for that PacketId stop;
+3. current holder persists the terminal delivery/tombstone state before opportunistic cleanup;
+4. any later duplicate custody/control/data event is treated idempotently and may be re-ACKed/reconciled, but never reopens the user message;
+5. relay copies are expired/cleaned using bounded completion propagation or normal TTL/tombstone policy.
+
+This prevents a race where one task says Delivered while another task creates a new active custody responsibility.
+
 ## Anti-storm behavior
 
 Immediate retry eligibility does not mean uncontrolled repeated transmission. ReliabilityManager applies:
@@ -113,12 +141,33 @@ The user does not resend or choose a route per message.
 
 ## Exactly-once application presentation
 
-Network delivery is at-least-once internally because retries, failover, gateway traversal or custody reconciliation may produce duplicates. Application presentation is exactly-once within the dedup retention policy:
+Network delivery is at-least-once internally because retries, failover, gateway traversal or custody reconciliation may produce duplicates. Application presentation is exactly-once within the dedup/presentation-retention policy:
 
 - duplicates with the same PacketId are collapsed;
 - destination may re-ACK a duplicate when needed;
 - duplicate arrival may update link/path evidence;
 - the chat/UI displays the logical message once.
+
+### Reboot-safe presentation
+
+A volatile RAM dedup cache alone is insufficient. Otherwise the destination could reboot and then display a late retry of an already-presented PacketId as a new message.
+
+The conversation/message persistence layer therefore performs an idempotent insert keyed by logical PacketId (or foundation-compatible stable message identity). A duplicate after reboot resolves to the existing message/presentation record and may refresh ACK state, but cannot append a second chat bubble.
+
+A bounded durable recent-delivery/presentation index or equivalent indexed conversation store is required. It must not become an unbounded flash log.
+
+## Durable time / TTL semantics
+
+Durable message records must not store a raw absolute deadline derived solely from volatile boot-relative monotonic milliseconds, because that clock restarts after reboot.
+
+The implementation uses two time domains explicitly:
+
+- **runtime monotonic time:** retries, route ageing, backoff, session timers and in-boot deadlines;
+- **durable message lifetime:** persisted TTL budget/age metadata that remains meaningful across reboot.
+
+When a trusted wall-clock source is available, it may be used to account for powered-off elapsed time. When no trusted wall clock/RTC is available, powered-off duration must not be guessed from an untrusted clock; the documented safe policy is to resume from the persisted remaining TTL budget and continue consuming it while running. This may extend real-world wall time but never causes a fresh reboot to instantly expire or resurrect a message because of clock reset.
+
+No durable field named like `expires_at_ms` may contain a boot-relative absolute deadline unless it also carries an epoch/domain that makes comparison valid after reboot.
 
 ## Durable retry metadata
 
@@ -127,11 +176,12 @@ The durable store retains enough information to resume safely after reboot witho
 - PacketId;
 - destination identity;
 - protected payload/envelope;
-- creation/TTL semantics;
+- durable creation/TTL budget semantics;
 - delivery class/priority;
 - retry epoch/state needed to prevent uncontrolled replay;
 - integrity/version metadata;
-- optional custody ownership metadata when that capability is enabled.
+- optional custody ownership metadata when that capability is enabled;
+- terminal presentation/delivery identity sufficient for reboot-safe idempotency where this node is the destination.
 
 Routes, RSSI history, neighbor tables and gateway scores are reconstructed after boot rather than persisted with every update.
 
@@ -153,4 +203,8 @@ Before the corresponding tier is promoted:
 8. Duplicate packet arrivals -> one application message.
 9. ACK lost after destination receives -> retry may occur, destination still displays once.
 10. Expired queued message -> deterministic expiry, no later delivery.
-11. When custody is enabled, run CUS-001..CUS-010 from `TEST_TRACEABILITY.md`.
+11. Destination receives message, reboots, then receives duplicate retry -> existing chat message reused, no second bubble.
+12. Reboot with pending TTL -> durable lifetime remains valid; boot-relative timer reset cannot instantly expire/resurrect it.
+13. Generate PacketIds across repeated reboot/power-cut/rollback simulation -> no collision/reuse within the defined safety model.
+14. Delivery ACK racing custody acceptance -> terminal delivery wins and no custody state reopens the message.
+15. When custody is enabled, run CUS-001..CUS-010 from `TEST_TRACEABILITY.md`.
