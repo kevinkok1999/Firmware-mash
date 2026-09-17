@@ -107,7 +107,22 @@ int main(void) {
     assert(info.max_sequence == 3);
     assert(info.recovered_partial);
     assert(info.valid_bytes == safe_bytes);
+
+    /* Boot repair must happen before another append; after truncation sequence 4 is reachable. */
     assert(mog_store_journal_truncate(path, info.valid_bytes) == MOG_JOURNAL_OK);
+    assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_PUT, 4, 102, &a,
+                                    sizeof(a), sizeof(a)) == MOG_JOURNAL_OK);
+    memset(&state, 0, sizeof(state));
+    assert(mog_store_journal_replay(path, sizeof(a), 0, &scratch, sizeof(scratch),
+                                    on_replay, &state, &info) == MOG_JOURNAL_OK);
+    assert(state.calls == 4);
+    assert(state.last_sequence == 4);
+    assert(state.last_uid == 102);
+    assert(info.max_sequence == 4);
+    assert(!info.recovered_partial);
+
+    /* Restore the three-entry prefix for the CRC-tail test. */
+    assert(mog_store_journal_truncate(path, safe_bytes) == MOG_JOURNAL_OK);
 
     /* A CRC-corrupted last committed entry is rejected; earlier state survives. */
     assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_PUT, 4, 102, &a,
