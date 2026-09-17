@@ -1,9 +1,12 @@
 # ESP-IDF / CMake
 build/
+build-*/
 sdkconfig
 sdkconfig.old
+sdkconfig.*
+!sdkconfig.defaults*
 managed_components/
-dependencies.lock
+# Keep dependencies.lock tracked for reproducible application builds.
 
 # PlatformIO / Arduino experiments
 .pio/
