@@ -6,6 +6,8 @@ Define the path from one validated Firmware-mash commit to one reproducible T-De
 
 This contract does not claim that a release is safe merely because it compiles. Hardware-facing STABLE claims require the mapped hardware evidence.
 
+Persistent-data migration and rollback semantics are additionally governed by `UPDATE_MIGRATION_CONTRACT.md`.
+
 ## Release artifact goal
 
 A release pipeline must produce one coherent package for one declared board/region/tier containing at minimum:
@@ -14,6 +16,7 @@ A release pipeline must produce one coherent package for one declared board/regi
 firmware merged image or equivalent supported flash set
 bootloader/partition/app artifacts where required
 release-manifest.json
+feature-evidence.json or equivalent machine-readable evidence map
 SHA256SUMS
 release notes / evidence tier
 recovery instructions and recovery artifact/path
@@ -33,8 +36,10 @@ A release is identified by:
 - region profile;
 - partition-table revision/hash;
 - protocol/wire version;
+- persistent-data schema version(s);
 - enabled feature tier;
-- evidence tier.
+- evidence tier;
+- update class (`NON_DESTRUCTIVE`, `MIGRATING`, `RECOVERY`, `FACTORY_RESET`).
 
 A clean checkout using the documented toolchain must reproduce the same logical release inputs. Where deterministic byte-for-byte output is not achievable because of tool metadata, the difference must be documented rather than hidden.
 
@@ -50,7 +55,8 @@ Contains only features with required automated plus hardware evidence. Must pres
 - validated reliability/multipath features;
 - EnergyManager without RF-harvest dependency;
 - simple local messaging UI;
-- recovery path.
+- recovery path;
+- safe persistent-data/update behavior for the declared supported upgrade path.
 
 Optional IP/ESP-NOW/custody features may be included in STABLE only when their promotion gates have passed.
 
@@ -74,10 +80,14 @@ Before producing a distributable STABLE artifact:
 6. verify required real-hardware evidence references for every STABLE hardware-facing feature;
 7. verify flash/RAM/PSRAM/resource budgets;
 8. verify partition table leaves required recovery/growth margins;
-9. verify no forbidden secret/private material is packaged;
-10. generate release manifest and hashes;
-11. generate supported flash descriptor;
-12. verify recovery procedure against the exact release layout.
+9. verify update/migration compatibility with supported previous release(s);
+10. verify no forbidden secret/private material is packaged;
+11. generate release/evidence manifests and hashes;
+12. generate supported flash descriptor from real build layout;
+13. verify default flash path is non-destructive unless the release is explicitly Recovery/Factory Reset;
+14. verify board/chip/flash-layout preflight rules;
+15. verify recovery procedure against the exact release layout;
+16. verify release metadata authenticity/signing/attestation path where public STABLE authenticity is claimed.
 
 Missing evidence rejects STABLE publication. It does not get converted into an optimistic warning.
 
@@ -96,15 +106,19 @@ toolchain
 region
 feature_tier
 evidence_tier
+update_class
 protocol_version
 partition_revision
+persistent_schema_versions
+supported_upgrade_from[]
 artifacts[] {name, sha256, size, flash_offset_if_applicable}
 required_accessories[]
 known_limitations[]
 recovery_artifact
+feature_evidence_manifest
 ```
 
-Fields become exact only from real build output.
+Fields become exact only from real build output/evidence.
 
 ## One-click flashing contract
 
@@ -114,15 +128,19 @@ The intended user experience is:
 open supported flasher
 -> select/confirm T-Deck Plus + region
 -> connect device
+-> preflight chip/flash/layout compatibility
 -> Flash
--> integrity/flash result shown
+-> integrity/authenticity + flash result shown
 -> reboot
--> first-run onboarding
+-> first-run or migration health check
+-> Home
 ```
 
 The user does not manually concatenate binaries or calculate offsets.
 
 The flasher must consume generated release metadata rather than hard-coded stale offsets where possible.
+
+The normal Flash action does not erase identity/config/MessageStore partitions unless a reviewed migration explicitly requires it. Destructive erase is a separately labelled Recovery/Factory Reset action.
 
 ## Recovery
 
@@ -131,29 +149,37 @@ Before STABLE release, recovery must cover at least:
 - failed/incomplete flash;
 - bad application image;
 - configuration reset without unnecessary identity loss where architecture permits;
+- persistent-schema incompatibility that must fail safe instead of corrupting data;
 - return to a known-good image through the documented USB/bootloader path.
 
-If A/B OTA is later enabled, image verification and rollback become separate mandatory release gates.
+If A/B OTA is enabled, image verification, first-boot health marking, persistence migration ordering and rollback compatibility become mandatory release gates.
 
-## Integrity and provenance
+## Integrity, authenticity and provenance
 
 - SHA-256 hashes are generated for distributed binary artifacts.
+- SHA-256 alone is not treated as source authenticity if an attacker could replace both artifact and hash.
+- Public STABLE distribution uses a maintained standard signing/attestation/authenticated-metadata mechanism when authenticity is claimed; no custom crypto primitive is invented.
 - Release notes identify the exact source commit and evidence tier.
 - Third-party notices/licenses required by reused code are included.
-- No custom cryptographic primitive is introduced for the flasher or release system.
+- Signing/attestation key lifecycle and rotation/revocation policy are documented before public signed-update claims.
 
 ## CI/CD rule
 
-A release workflow may be prepared before production source exists, but must fail closed when required source, baseline approval or evidence is absent. It must never fabricate a successful release artifact from placeholder data.
+A release workflow may be prepared before production source exists, but must fail closed when required source, baseline approval, migration compatibility or evidence is absent. It must never fabricate a successful release artifact from placeholder data.
 
 ## Acceptance tests
 
 ```text
 RELSE-001 clean-checkout release package creation
+RELSE-002 release manifest includes update/schema/evidence metadata
 RELSE-003 manifest hashes match distributed artifacts
 RELSE-004 flasher descriptor matches generated partition/build metadata
 RELSE-005 STABLE release rejected when hardware evidence is missing
 RELSE-006 recovery path verified against exact release package
 RELSE-007 no manual binary assembly required by normal user
 RELSE-008 artifact maps uniquely to commit/board/region/tier
+RELSE-009 default Flash path preserves identity/data for NON_DESTRUCTIVE update
+RELSE-010 wrong chip/flash-layout/update path rejected before write
+RELSE-011 signed/authenticated release metadata verification fails closed when invalid
+RELSE-012 unsupported persistent-schema migration rejects STABLE packaging
 ```
