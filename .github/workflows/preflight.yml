@@ -25,8 +25,14 @@ jobs:
             SECURITY.md
             CONTRIBUTING.md
             docs/ARCHITECTURE.md
+            docs/API_CONTRACTS.md
+            docs/ROUTING_SPEC_DRAFT.md
             docs/LICENSING.md
             docs/PREBUILD_CHECKLIST.md
+            docs/PREBUILD_REVIEW_2026-09-17.md
+            docs/BASELINE_TEMPLATE.md
+            docs/BUILD_PHASE_1_PLAN.md
+            docs/PROVENANCE_TEMPLATE.md
             docs/RISK_REGISTER.md
             docs/ROADMAP.md
             docs/TESTING.md
