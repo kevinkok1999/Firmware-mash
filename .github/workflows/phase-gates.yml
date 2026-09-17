@@ -1,0 +1,50 @@
+name: phase-gates
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Highest phase to validate
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+
+permissions:
+  contents: read
+
+jobs:
+  phase-1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Phase 1
+        shell: bash
+        run: bash scripts/phase-gate.sh 1
+
+  phase-2:
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == '2' || inputs.phase == '3') }}
+    needs: phase-1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Phase 2
+        shell: bash
+        run: bash scripts/phase-gate.sh 2
+
+  phase-3:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == '3' }}
+    needs: phase-2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Phase 3
+        shell: bash
+        run: bash scripts/phase-gate.sh 3
