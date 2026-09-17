@@ -42,9 +42,16 @@ phase1() {
   require_file docs/REPOSITORY_LAYOUT.md
   require_file docs/BASELINE_EVIDENCE_2026-09-17.md
   require_file docs/BASELINE_PROVENANCE_2026-09-17.md
+  require_file docs/PHASE1_STORAGE_DURABILITY_DESIGN.md
+
+  require_file components/mog_message_store/CMakeLists.txt
   require_file components/mog_message_store/include/mog_store_snapshot.h
   require_file components/mog_message_store/mog_store_snapshot.c
+  require_file components/mog_message_store/include/mog_store_journal.h
+  require_file components/mog_message_store/mog_store_journal.c
+
   require_file test/host/test_mog_store_snapshot.c
+  require_file test/host/test_mog_store_journal.c
   require_file test/run_host_tests.sh
   require_file scripts/sync-foundation.sh
 
