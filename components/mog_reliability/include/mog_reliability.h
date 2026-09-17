@@ -53,6 +53,11 @@ int mog_reliability_due(const mog_reliability_t *rel, uint32_t now_ms,
                         size_t *out_count);
 int mog_reliability_sweep_exhausted(mog_reliability_t *rel, uint32_t now_ms,
                                     size_t *failed_count);
+/* Remove only a terminal runtime entry. Call this only after the authoritative
+ * MessageStore has durably committed the terminal state. ReliabilityManager
+ * intentionally cannot evict live entries to make room. */
+int mog_reliability_forget_terminal(mog_reliability_t *rel,
+                                    mog_message_key_t key);
 const mog_reliability_entry_t *mog_reliability_find(const mog_reliability_t *rel,
                                                      mog_message_key_t key);
 
