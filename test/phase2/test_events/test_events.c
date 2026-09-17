@@ -6,7 +6,6 @@
 static mog_event_t telemetry(uint32_t n) {
     return (mog_event_t){
         .type = MOG_EVENT_RF_METRICS_CHANGED,
-        .event_class = MOG_EVENT_CLASS_TELEMETRY,
         .arg0 = n,
     };
 }
@@ -14,9 +13,16 @@ static mog_event_t telemetry(uint32_t n) {
 static mog_event_t control(mog_event_type_t type, uint32_t n) {
     return (mog_event_t){
         .type = type,
-        .event_class = MOG_EVENT_CLASS_CONTROL,
         .arg0 = n,
     };
+}
+
+static void test_type_owns_priority(void) {
+    assert(mog_event_class_for_type(MOG_EVENT_DELIVERY_ACK) == MOG_EVENT_CLASS_CONTROL);
+    assert(mog_event_class_for_type(MOG_EVENT_ROUTE_AVAILABLE) == MOG_EVENT_CLASS_CONTROL);
+    assert(mog_event_class_for_type(MOG_EVENT_RF_METRICS_CHANGED) == MOG_EVENT_CLASS_TELEMETRY);
+    assert(mog_event_class_for_type(MOG_EVENT_ENERGY_SOURCE_CHANGED) == MOG_EVENT_CLASS_TELEMETRY);
+    assert(mog_event_class_for_type((mog_event_type_t)999) == MOG_EVENT_CLASS_CONTROL);
 }
 
 static void test_control_evicts_oldest_telemetry(void) {
@@ -111,6 +117,7 @@ static void test_ring_wrap_keeps_fifo_order(void) {
 }
 
 int main(void) {
+    test_type_owns_priority();
     test_control_evicts_oldest_telemetry();
     test_telemetry_drops_when_full();
     test_control_overflow_requires_resync();
