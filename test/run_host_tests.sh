@@ -31,9 +31,20 @@ include_flags=(-I"${repo_root}/components/mog_message_store/include")
 "$cc_bin" "${common_flags[@]}" \
   -I"${repo_root}/components/mog_core/include" \
   -I"${repo_root}/components/mog_router/include" \
+  "${repo_root}/components/mog_core/mog_core.c" \
   "${repo_root}/components/mog_router/mog_router.c" \
   "${repo_root}/test/host/test_mog_router.c" \
   -o "${build_dir}/test_mog_router"
+
+# ReliabilityManager owns bounded retry/E2E delivery truth. Link success must
+# never promote a logical message to Delivered.
+"$cc_bin" "${common_flags[@]}" \
+  -I"${repo_root}/components/mog_core/include" \
+  -I"${repo_root}/components/mog_reliability/include" \
+  "${repo_root}/components/mog_core/mog_core.c" \
+  "${repo_root}/components/mog_reliability/mog_reliability.c" \
+  "${repo_root}/test/host/test_mog_reliability.c" \
+  -o "${build_dir}/test_mog_reliability"
 
 # Compile the durable stored_msg_t layout contract independently. Any upstream
 # field-order/width/padding drift must fail the build and force an explicit
@@ -65,6 +76,7 @@ sed 's#"/spiffs/#"/tmp/mog-spiffs/#g' \
 "${build_dir}/test_mog_store_journal"
 "${build_dir}/test_mog_store_state"
 "${build_dir}/test_mog_router"
+"${build_dir}/test_mog_reliability"
 
 rm -rf /tmp/mog-spiffs
 mkdir -p /tmp/mog-spiffs
