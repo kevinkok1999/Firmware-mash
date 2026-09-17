@@ -33,7 +33,7 @@ components/mog_events/
 components/mog_core/
 ```
 
-Freeze one logical PacketId before route selection. Use bounded packet/event pools. Radio callbacks enqueue events and return; they do not mutate route state.
+Freeze one logical PacketId before route selection. Use bounded packet/event pools. Radio callbacks enqueue events and return; they do not mutate route state. Conversation identity belongs to contact/identity state and never to the chosen transport.
 
 ### 4. EnergyManager foundation
 
@@ -115,7 +115,42 @@ Normal ESP-NOW and ESP-NOW Long Range are operating modes of one adapter, not in
 
 EnergyManager provides background discovery/radio budgets; the adapter does not invent a second power-policy engine.
 
-### 10. Event-driven delayed delivery
+### 10. IP backhaul + gateway federation
+
+Create/adapt:
+
+```text
+components/mog_transport_ip/
+  CMakeLists.txt
+  include/mog_transport_ip.h
+  mog_transport_ip.c/.cpp
+  mog_ip_session.c/.cpp
+  mog_ip_framing.c/.cpp
+
+components/mog_netif_wifi/
+components/mog_netif_cellular/
+components/mog_gateway/
+components/mog_gateway_discovery/
+```
+
+Implementation order inside this phase:
+
+1. define the bearer-neutral NetifProvider interface and a host/mock provider;
+2. implement the stock T-Deck Wi-Fi provider using maintained foundation/ESP-IDF networking APIs;
+3. implement one outbound authenticated IP/federation session path;
+4. add bounded GatewayManager state and authenticated/expiring advertisements;
+5. integrate IP route evidence into HybridRouter without creating a second route table;
+6. prove same PacketId and same conversation through LoRa -> gateway -> IP -> gateway -> LoRa;
+7. prove IP loss causes automatic alternate/fallback or WAITING_ROUTE;
+8. prove gateway/IP recovery makes queued messages retry-eligible;
+9. add multiple bootstrap/federation peers and bootstrap-loss/failover tests;
+10. implement the cellular provider only against a selected compatible modem/PPP target.
+
+Wi-Fi and cellular are bearer providers of the same `mog_transport_ip`. Do not create `WiFiRouter` or `CellularRouter` ownership. A normal third-party access point is only an IP medium after legitimate association; it is not an unconfigured relay.
+
+Internet-facing security uses maintained SDK/foundation TLS/security implementations. User payload remains end-to-end protected; do not invent cryptography.
+
+### 11. Event-driven delayed delivery
 
 A durable message in WAITING_ROUTE becomes immediately eligible for bounded retry when credible connectivity returns, including:
 
@@ -125,11 +160,13 @@ LINK_RECOVERED
 ROUTE_DISCOVERED
 ROUTE_AVAILABLE
 TRANSPORT_RECOVERED
+GATEWAY_AVAILABLE
+FEDERATION_SESSION_UP
 ```
 
 There is no fixed 200 m / 500 m / 1 km trigger. The trigger is usable connectivity evidence. Anti-storm jitter/backoff and airtime/energy policy may defer by a small bounded amount, but the user never needs to press Send again.
 
-### 11. Health + metrics
+### 12. Health + metrics
 
 ```text
 components/mog_health/
@@ -137,19 +174,21 @@ components/mog_metrics/
 components/mog_rf_intelligence/
 ```
 
-Expose queue pressure, route churn, retries, link recovery, storage health, airtime pressure, peer pressure, memory high-water marks, energy-state transitions, energy-policy deferrals and invalid/low-confidence power samples.
+Expose queue pressure, route churn, retries, link recovery, storage health, airtime pressure, peer pressure, gateway/session pressure, IP reconnects, rejected/expired advertisements, memory high-water marks, energy-state transitions, energy-policy deferrals and invalid/low-confidence power samples.
 
-### 12. UI integration
+### 13. UI integration
 
 Required user-visible states:
 
 ```text
 Sending
-Waiting for route
+Waiting for connection
 Queued
 Delivered
 Weak link
 Searching for route
+Mesh only
+Internet assist available
 Storage warning
 Radio degraded
 Energy saving
@@ -157,9 +196,19 @@ Survival mode
 Energy assist active   # only if compatible detected hardware exists
 ```
 
-The UI never requires normal users to choose LoRa, ESP-NOW Normal, ESP-NOW LR, next hop, retry count, route number, MPPT point, rectifier threshold or energy-reservoir voltage.
+One contact always stays one continuous conversation. The UI never creates a separate LoRa chat, ESP-NOW chat or Internet chat.
 
-### 13. Ambient RF Energy Assist provider seam
+Optional high-level network policy:
+
+```text
+AUTO
+OFF-GRID ONLY
+INTERNET ASSIST
+```
+
+The UI never requires normal users to choose LoRa, ESP-NOW Normal, ESP-NOW LR, Wi-Fi/cellular route, gateway, next hop, retry count, route number, MPPT point, rectifier threshold or energy-reservoir voltage.
+
+### 14. Ambient RF Energy Assist provider seam
 
 Create the optional LAB boundary in the same code project:
 
@@ -177,7 +226,7 @@ If future hardware exposes a reservoir/supercap, implement `TX_RESERVE_READY` on
 
 Preferred physical assumption is a separate harvesting antenna/rectenna. Do not implement shared-antenna switching logic as a stable default without measured RF isolation/desense/insertion-loss evidence.
 
-### 14. Optional/lab transports
+### 15. Optional/lab transports
 
 Only after stable-core evidence:
 
@@ -185,6 +234,7 @@ Only after stable-core evidence:
 mog_transport_nan
 mog_rf_assist
 future external backscatter adapter
+advanced NAT traversal/direct federation experiments
 ```
 
 These remain removable without breaking LoRa-only operation.
@@ -192,6 +242,8 @@ These remain removable without breaking LoRa-only operation.
 ## Missing-code implementation rule
 
 If a required Firmware-mash component, adapter, driver shim, policy engine, simulator model or hardware-provider interface does not already exist upstream, implement it in-project under the appropriate `mog_` component rather than dropping the feature.
+
+This explicitly includes `mog_transport_ip`, NetifProvider implementations, GatewayManager, GatewayDiscovery, federation framing/session policy and their simulator models.
 
 Rules:
 
@@ -213,35 +265,39 @@ UI/Application
   -> Reliability / Message service
   -> HybridRouter <---- EnergyPolicySnapshot
   -> Transport interfaces
-  -> Radio/board drivers
+  -> Radio/netif/board drivers
 
+GatewayDiscovery ---> GatewayManager ---> HybridRouter evidence
+Wi-Fi/cellular ---> NetifProvider ---> IPTransport
 Board/PMIC telemetry ---> EnergyManager ---> EnergyPolicySnapshot
 Optional RF harvest HW -> EnergyManager
 ```
 
-MessageStore is below reliability and does not make routing decisions. Transport adapters report link evidence and transmit frames; they never own route tables. Energy providers report measurements only and never own routing or delivery policy.
+MessageStore is below reliability and does not make routing decisions. Transport adapters report link evidence and transmit frames; they never own route tables. GatewayManager reports gateway capability/reachability evidence and never owns a second route engine. Energy providers report measurements only and never own routing or delivery policy.
 
 ## Concurrency model
 
 - `network_task`: sole writer of routing/neighbor/reliability state;
-- radio callbacks: enqueue small bounded events and return;
+- radio/netif callbacks: enqueue small bounded events and return;
 - storage worker: bounded durable I/O requested through explicit commands/events;
+- IP/federation worker: bounded session I/O and decoded event publication, never direct route mutation;
+- gateway discovery worker/timer: bounded announcements/expiry and event publication;
 - energy worker/timer: samples providers at bounded cadence and publishes normalized snapshots/events;
 - UI task: reads snapshots/events, never mutates routing internals;
 - no hidden second routing task inside an adapter;
-- no hardware-provider callback directly mutates routing state.
+- no hardware-provider or gateway callback directly mutates routing state.
 
 ## Memory policy
 
-- fixed/bounded pools for packets, events, ACKs, peers, routes and queued work;
+- fixed/bounded pools for packets, events, ACKs, peers, gateway sessions, advertisements, routes and queued work;
 - avoid unbounded target-side container growth;
 - avoid per-packet heap allocation where practical;
-- keep transient routes/metrics/energy telemetry in RAM/PSRAM;
+- keep transient routes/metrics/energy/gateway discovery telemetry in RAM/PSRAM;
 - persist only recovery-critical state;
-- do not persist high-frequency energy samples.
+- do not persist high-frequency energy samples or uncontrolled federation logs.
 
 Exact capacities are measured and frozen after baseline RAM/PSRAM/flash evidence.
 
 ## Definition of implementation-ready
 
-Coding may proceed once the baseline gate is PASS and these contracts remain internally consistent. No coding task should need to reopen ownership, transport hierarchy, retry-trigger semantics, no-SD policy, PacketId semantics, EnergyManager ownership or stable-vs-lab boundaries.
+Coding may proceed once the baseline gate is PASS and these contracts remain internally consistent. No coding task should need to reopen ownership, transport hierarchy, retry-trigger semantics, no-SD policy, PacketId/conversation semantics, EnergyManager ownership, IP/gateway ownership or stable-vs-beta/lab boundaries.
