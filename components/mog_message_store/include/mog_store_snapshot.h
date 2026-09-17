@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-#define MOG_STORE_SNAPSHOT_FORMAT_VERSION 1u
+#define MOG_STORE_SNAPSHOT_FORMAT_VERSION 2u
 
 typedef enum {
     MOG_STORE_OK = 0,
@@ -22,6 +22,7 @@ typedef enum {
 
 typedef struct {
     uint64_t generation;
+    uint64_t last_sequence;
     uint32_t record_count;
     uint32_t record_size;
     uint32_t payload_crc32;
@@ -31,33 +32,24 @@ typedef struct {
 uint32_t mog_store_crc32(const void *data, size_t len, uint32_t seed);
 
 /*
- * Write one complete snapshot. Durability protocol:
- *   1. write an explicitly uncommitted header + payload;
- *   2. fflush/fsync the payload;
- *   3. write a self-validating committed header;
- *   4. fflush/fsync the commit header.
- *
- * The caller writes only to an inactive/shadow path. Existing committed state
- * must remain untouched until this function returns success.
+ * Write one complete snapshot using a fixed little-endian on-disk header.
+ * `last_sequence` is the highest journal sequence included in the snapshot.
+ * The commit marker is published only after the payload is fsync'd.
  */
 int mog_store_snapshot_write(const char *path,
                              uint64_t generation,
+                             uint64_t last_sequence,
                              const void *records,
                              uint32_t record_count,
                              uint32_t record_size);
 
-/* Validate magic/version/record size/file size/header CRC/payload CRC/commit marker. */
 int mog_store_snapshot_validate(const char *path,
                                 uint32_t expected_record_size,
                                 mog_store_snapshot_info_t *out_info);
 
 /*
- * Validate and read a complete committed snapshot.
- *
- * `records_capacity` is measured in records, not bytes. If the snapshot holds
- * more records than the supplied capacity, MOG_STORE_ERR_SIZE is returned and
- * no partial snapshot is exposed to the caller. Empty snapshots are valid and
- * may use records == NULL with records_capacity == 0.
+ * Validate and read a complete committed snapshot. `records_capacity` is in
+ * records, not bytes. No partial snapshot is exposed on insufficient capacity.
  */
 int mog_store_snapshot_read(const char *path,
                             uint32_t expected_record_size,
@@ -65,7 +57,7 @@ int mog_store_snapshot_read(const char *path,
                             uint32_t records_capacity,
                             mog_store_snapshot_info_t *out_info);
 
-/* Pick the newest valid generation. If one slot is torn/corrupt, use the other. */
+/* Pick the newest valid generation, breaking an equal generation by watermark. */
 int mog_store_snapshot_select(const char *slot_a,
                               const char *slot_b,
                               uint32_t expected_record_size,
