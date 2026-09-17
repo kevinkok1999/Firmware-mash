@@ -15,31 +15,33 @@ Firmware-mash therefore does not use in-place mutation as its final durable-stat
 
 ## Required model
 
-Durable message state is composed of two mechanisms:
+Durable message state is composed of two mechanisms.
 
 ### 1. Append-only journal for normal mutations
 
-Normal durable changes are represented as monotonically sequenced journal events:
+Normal durable changes are represented as monotonically sequenced journal operations:
 
-- UPSERT a complete durable message record/state;
-- DELETE a durable record only after the higher-level contract permits deletion.
+- `PUT` stores the complete durable state of one message UID;
+- `DELETE` removes a UID only after the higher-level lifecycle contract permits deletion.
 
-Each event contains a self-validating header, payload CRC and monotonically increasing sequence number. An event is visible to recovery only when its complete header and payload validate. A torn/corrupt trailing event is ignored and may be truncated by repair; recovery never skips corruption and then accepts later bytes.
+Each entry has an explicitly serialized little-endian header, sequence, UID, payload CRC, header CRC and commit marker. The writer first writes header + payload and fsyncs, then publishes the committed header and fsyncs again. An unfinished append therefore cannot be mistaken for a committed entry.
 
-This removes normal in-place status mutation from the durability path.
+Recovery validates entries strictly in ascending sequence order and stops at the first torn, corrupt or non-monotonic entry. It never skips bad bytes and resumes later. If a damaged tail is found, startup must truncate the journal to the reported validated `valid_bytes` before any new append. Otherwise later valid events could be placed behind unreachable corrupt bytes.
+
+A committed snapshot stores a sequence watermark. Journal replay validates older entries but only reapplies entries newer than that watermark, preventing duplicate application after compaction.
 
 ### 2. Transactional snapshot for compaction
 
 When journal growth requires compaction:
 
-1. materialize current state in memory using the committed snapshot + valid journal;
+1. reconstruct current state using the valid committed snapshot plus valid journal prefix;
 2. write a complete new snapshot to the inactive/shadow slot with a higher generation;
 3. fsync payload;
 4. publish the committed self-validating snapshot header;
 5. fsync commit;
-6. validate the new snapshot by reading it back;
-7. only after successful validation may the old generation/journal become reclaimable;
-8. a power cut at any point before step 6 leaves the previous committed generation recoverable.
+6. validate and read the new snapshot back;
+7. only after successful validation may the old generation and already-checkpointed journal prefix become reclaimable;
+8. a power cut before that point leaves the previous committed generation recoverable.
 
 Two valid snapshot generations may coexist temporarily. Boot selects the newest fully valid generation. Generation number never substitutes for CRC/format validation.
 
@@ -50,12 +52,13 @@ Recovery order:
 1. validate both snapshot slots;
 2. select the newest valid committed generation;
 3. load it completely; never expose a partial snapshot;
-4. replay journal entries with sequence values newer than the snapshot checkpoint;
+4. replay the journal using the snapshot sequence watermark;
 5. stop at the first torn/corrupt/non-monotonic journal entry;
-6. repair only the invalid trailing suffix;
+6. if replay reports partial recovery, truncate exactly to its validated `valid_bytes` before allowing another append;
 7. reconstruct bounded in-memory MessageStore state;
-8. publish storage health counters/diagnostics;
-9. continue boot even when message persistence is unavailable, without erasing identity/config.
+8. establish the next sequence strictly above every committed/replayed sequence;
+9. publish storage health counters/diagnostics;
+10. continue boot even when message persistence is unavailable, without erasing identity/config.
 
 If neither snapshot is valid but a legacy Bramble store exists during a supported migration, migration logic must be explicit and transactional. Otherwise storage enters a degraded/recovery state; it must not silently reinterpret unknown bytes.
 
@@ -70,7 +73,7 @@ If neither snapshot is valid but a legacy Bramble store exists during a supporte
 
 ## Commit semantics
 
-A caller may treat a durable operation as committed only after the journal/snapshot function returns success following `fsync` and integrity validation required by that operation.
+A caller may treat a durable operation as committed only after the required journal/snapshot fsync and integrity steps succeed.
 
 `Delivered` is unrelated to storage commit: only destination end-to-end acknowledgement can mark a message delivered.
 
@@ -79,10 +82,9 @@ A caller may treat a durable operation as committed only after the journal/snaps
 The durable system must have explicit limits for:
 
 - maximum active messages;
-- maximum record size;
-- maximum journal payload size;
+- message/record size;
 - journal size/entry threshold that triggers compaction;
-- retained generations;
+- retained snapshot generations;
 - compaction scratch memory;
 - write-amplification/health counters.
 
@@ -99,9 +101,11 @@ Host/simulator tests must eventually cover at least:
 - both snapshot slots present, newest invalid;
 - journal torn in header;
 - journal torn in payload;
-- journal CRC corruption;
+- journal payload/header CRC corruption;
 - non-monotonic journal sequence;
-- power loss before/after journal `fsync`;
+- startup tail truncation before subsequent append;
+- snapshot watermark excludes already-compacted events from replay;
+- power loss before/after both journal fsync points;
 - power loss at each snapshot compaction phase;
 - repeated compaction without leaked files/storage;
 - reboot with full store;
@@ -113,10 +117,10 @@ Physical power-cut testing on a real T-Deck Plus remains a STABLE promotion requ
 
 Phase 1 is not complete merely because `mog_store_snapshot` and `mog_store_journal` compile. It exits only when:
 
-- the host tests pass with warnings-as-errors;
+- host tests pass with warnings-as-errors;
 - the pinned foundation sync is reproducible;
 - the journal + snapshot model is integrated over the Bramble message-store adapter;
-- legacy migration behavior is defined/tested if needed;
+- legacy migration behavior is defined/tested if required;
 - target T-Deck build succeeds;
 - source/simulator no-SD behavior is preserved;
 - hardware-only release evidence remains clearly marked unverified rather than assumed.
