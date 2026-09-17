@@ -8,13 +8,14 @@ This directory is the design and evidence source of truth before production firm
 - `FEATURE_MANIFEST.md` — complete STABLE/BETA/LAB capability checklist.
 - `IMPLEMENTATION_BLUEPRINT.md` — exact module and coding order after baseline approval.
 - `ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` — master execution contract for a coding agent.
+- `ENERGY_MANAGEMENT_CONTRACT.md` — EnergyManager, power-state, optional harvester-provider and RF isolation contract.
 - `UI_UX_CONTRACT.md` — smartphone-like T-Deck user experience.
 - `UI_IMPLEMENTATION_MAP.md` — exact screens, navigation, UI state mapping and event bindings.
 - `PACKET_DELIVERY_CONTRACT.md` — PacketId, ACK, delayed-delivery and exactly-once presentation semantics.
 - `WIRE_PROTOCOL_CONTRACT.md` — transport-neutral wire layering, versioning and compatibility rules.
 - `STANDALONE_TDECK_REQUIREMENTS.md` — no-microSD, internal-storage and recovery requirements.
 - `MESSAGE_STORE_DESIGN.md` — durable internal queued-message storage contract.
-- `BUILD_CONFIG_MATRIX.md` — canonical baseline, LoRa-stable, hybrid-beta and lab configurations.
+- `BUILD_CONFIG_MATRIX.md` — canonical baseline, LoRa-stable, hybrid-beta, energy-lab and lab configurations.
 - `TEST_TRACEABILITY.md` — requirement-to-test mapping and stable test IDs.
 - `RESOURCE_BUDGET.md` — flash/RAM/PSRAM/persistence/OTA budget rules.
 - `USER_RELEASE_CONTRACT.md` — one-flash stable-user requirement; users are not the engineering test harness.
@@ -26,6 +27,7 @@ This directory is the design and evidence source of truth before production firm
 - `API_CONTRACTS.md` — internal interfaces and ownership rules.
 - `ROUTING_SPEC_DRAFT.md` — transport-neutral routing and failover behavior.
 - `REPOSITORY_LAYOUT.md` — source placement rules after the baseline gate unlocks production code.
+- `ENERGY_MANAGEMENT_CONTRACT.md` — energy state, provider boundary and integration semantics.
 
 ## Foundation and reproducibility
 
@@ -41,16 +43,17 @@ This directory is the design and evidence source of truth before production firm
 - `PREBUILD_REVIEW_2026-09-17.md` — adversarial pre-build review.
 - `REAL_WORLD_COMPETITOR_REVIEW_2026-09-17.md` — real-world standalone usability review.
 - `CONTROLLER_REVIEW_2026-09-17.md` — final code-readiness contradiction/gap review.
+- `ENERGY_INTEGRATION_REVIEW_2026-09-17.md` — embedded-power, RF, routing and release review for EnergyManager/Ambient RF Energy Assist.
 - `RISK_REGISTER.md` — technical risk register and release gates.
 
 ## Testing
 
 - `TESTING.md` — simulator, host and hardware evidence policy.
-- `TEST_TRACEABILITY.md` — stable IDs and requirement-to-evidence mapping.
+- `TEST_TRACEABILITY.md` — stable IDs and requirement-to-evidence mapping, including ENG/EHW energy tests.
 
 ## Architecture Decision Records
 
-See `adr/README.md` and `adr/0001-*.md` onward. ADRs record decisions that should not be changed casually during implementation.
+See `adr/README.md` and `adr/0001-*.md` onward. ADRs record decisions that should not be changed casually during implementation. ADR 0006 defines EnergyManager ownership and RF-harvesting isolation.
 
 ## Documentation rule
 
@@ -60,6 +63,7 @@ Do not duplicate the same normative rule across multiple documents unless one fi
 - complete feature scope -> `FEATURE_MANIFEST.md`;
 - API semantics -> `API_CONTRACTS.md`;
 - routing semantics -> `ROUTING_SPEC_DRAFT.md`;
+- energy-management/provider semantics -> `ENERGY_MANAGEMENT_CONTRACT.md`;
 - packet/delivery semantics -> `PACKET_DELIVERY_CONTRACT.md`;
 - wire/layering semantics -> `WIRE_PROTOCOL_CONTRACT.md`;
 - storage/no-SD requirements -> `STANDALONE_TDECK_REQUIREMENTS.md`;
