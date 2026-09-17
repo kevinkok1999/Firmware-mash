@@ -4,6 +4,7 @@
 
 #include <limits.h>
 #include <string.h>
+#include <unistd.h>
 
 static void *record_at(mog_store_state_t *state, uint32_t index) {
     return state->records + ((size_t)index * state->record_size);
@@ -152,6 +153,9 @@ static int load_snapshot_if_present(mog_store_state_t *state,
     const int select_rc = mog_store_snapshot_select(slot_a, slot_b, state->record_size,
                                                     selected, sizeof(selected), snapshot_info);
     if (select_rc == MOG_STORE_ERR_NO_VALID_SLOT) {
+        if (access(slot_a, F_OK) == 0 || access(slot_b, F_OK) == 0) {
+            return MOG_STATE_ERR_FORMAT;
+        }
         *snapshot_present = 0;
         memset(snapshot_info, 0, sizeof(*snapshot_info));
         return MOG_STATE_OK;
