@@ -27,6 +27,14 @@ include_flags=(-I"${repo_root}/components/mog_message_store/include")
   "${repo_root}/test/host/test_mog_store_state.c" \
   -o "${build_dir}/test_mog_store_state"
 
+# Compile and exercise the bounded single-authority HybridRouter independently.
+"$cc_bin" "${common_flags[@]}" \
+  -I"${repo_root}/components/mog_core/include" \
+  -I"${repo_root}/components/mog_router/include" \
+  "${repo_root}/components/mog_router/mog_router.c" \
+  "${repo_root}/test/host/test_mog_router.c" \
+  -o "${build_dir}/test_mog_router"
+
 # Compile the durable stored_msg_t layout contract independently. Any upstream
 # field-order/width/padding drift must fail the build and force an explicit
 # storage-schema migration review instead of silently reinterpreting bytes.
@@ -56,6 +64,7 @@ sed 's#"/spiffs/#"/tmp/mog-spiffs/#g' \
 "${build_dir}/test_mog_store_snapshot"
 "${build_dir}/test_mog_store_journal"
 "${build_dir}/test_mog_store_state"
+"${build_dir}/test_mog_router"
 
 rm -rf /tmp/mog-spiffs
 mkdir -p /tmp/mog-spiffs
