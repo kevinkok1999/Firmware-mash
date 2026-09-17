@@ -28,7 +28,7 @@ jobs:
           }
 
           required_fields=(
-            '^foundation_repo='
+            '^foundation_repo=.+$'
             '^foundation_commit=[0-9a-f]{40}$'
             '^tdeck_build=PASS$'
             '^baseline_tests=PASS$'
@@ -48,6 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           required=(
+            docs/THREE_PHASE_IMPLEMENTATION_PLAN.md
             docs/CODING_TRIGGER_CONTRACT.md
             docs/IMPLEMENTATION_BLUEPRINT.md
             docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md
@@ -60,6 +61,7 @@ jobs:
             docs/ENERGY_MANAGEMENT_CONTRACT.md
             docs/FLASHER_RELEASE_CONTRACT.md
             docs/adr/0008-store-carry-custody.md
+            docs/REPOSITORY_LAYOUT.md
           )
           for f in "${required[@]}"; do
             test -s "$f" || { echo "BLOCKED: missing $f" >&2; exit 1; }
@@ -83,18 +85,26 @@ jobs:
             exit 1
           fi
 
+      - name: Execute Phase 1 foundation gate
+        shell: bash
+        run: bash scripts/phase-gate.sh 1
+
       - name: Coding trigger summary
         shell: bash
         run: |
           {
             echo '# Firmware-mash coding readiness'
             echo
-            echo 'READY: baseline and architecture gates passed.'
+            echo 'READY: baseline, controller and Phase 1 executable gates passed.'
             echo
-            echo 'Next execution source of truth:'
+            echo 'Mandatory implementation order:'
+            echo '1. Phase 1 — foundation/durable core'
+            echo '2. Phase 2 — communication engine'
+            echo '3. Phase 3 — product/release/flasher'
+            echo
+            echo 'Sources of truth:'
+            echo '- docs/THREE_PHASE_IMPLEMENTATION_PLAN.md'
             echo '- docs/CODING_TRIGGER_CONTRACT.md'
             echo '- docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md'
             echo '- docs/IMPLEMENTATION_BLUEPRINT.md'
-            echo
-            echo 'This workflow validates readiness; a coding agent performs the repository implementation.'
           } >> "$GITHUB_STEP_SUMMARY"
