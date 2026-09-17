@@ -20,10 +20,13 @@ jobs:
         run: |
           set -euo pipefail
           required=(
+            .editorconfig
             LICENSE
             README.md
             SECURITY.md
             CONTRIBUTING.md
+            docs/README.md
+            docs/REPOSITORY_LAYOUT.md
             docs/ARCHITECTURE.md
             docs/API_CONTRACTS.md
             docs/ROUTING_SPEC_DRAFT.md
@@ -40,6 +43,7 @@ jobs:
             docs/ROADMAP.md
             docs/TESTING.md
             docs/UPSTREAM_AUDIT_2026-09-17.md
+            docs/adr/README.md
             docs/adr/0001-single-routing-authority.md
             docs/adr/0002-foundation-selection-gate.md
             docs/adr/0003-feature-stability-and-flags.md
@@ -71,13 +75,27 @@ jobs:
           marker='docs/BASELINE_APPROVED'
 
           if [ ! -f "$marker" ]; then
-            echo 'Baseline is not approved yet; production source directories are forbidden.'
-            for d in components main firmware src; do
-              if [ -d "$d" ] && find "$d" -type f -print -quit | grep -q .; then
-                echo "Production source directory '$d' exists before baseline approval."
-                exit 1
-              fi
-            done
+            echo 'Baseline is not approved yet; repository is documentation/config only.'
+
+            allowed_top='^(.git|.github|docs|.editorconfig|.gitignore|CONTRIBUTING.md|LICENSE|README.md|SECURITY.md)$'
+            unexpected="$(find . -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -Ev "$allowed_top" || true)"
+            if [ -n "$unexpected" ]; then
+              echo 'Unexpected top-level path before baseline approval:'
+              printf '%s\n' "$unexpected"
+              exit 1
+            fi
+
+            source_files="$(find . -type f \
+              -not -path './.git/*' \
+              \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \
+                 -o -name '*.ino' -o -name '*.S' -o -name '*.s' -o -name '*.rs' -o -name '*.go' \) \
+              -print)"
+            if [ -n "$source_files" ]; then
+              echo 'Production/source file detected before baseline approval:'
+              printf '%s\n' "$source_files"
+              exit 1
+            fi
+
             exit 0
           fi
 
