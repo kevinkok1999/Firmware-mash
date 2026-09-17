@@ -45,4 +45,6 @@ if [[ "$actual" != "$foundation_commit" ]]; then
   exit 1
 fi
 
-echo "Foundation ready: $foundation_repo@$actual"
+bash "${repo_root}/scripts/apply-overlay.sh" "$dest"
+
+echo "Foundation + Firmware-mash overlay ready: $foundation_repo@$actual"
