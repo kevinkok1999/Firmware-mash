@@ -34,6 +34,7 @@ jobs:
             docs/FEATURE_MANIFEST.md
             docs/IMPLEMENTATION_BLUEPRINT.md
             docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md
+            docs/ENERGY_MANAGEMENT_CONTRACT.md
             docs/PACKET_DELIVERY_CONTRACT.md
             docs/WIRE_PROTOCOL_CONTRACT.md
             docs/MESSAGE_STORE_DESIGN.md
@@ -47,6 +48,7 @@ jobs:
             docs/PREBUILD_REVIEW_2026-09-17.md
             docs/REAL_WORLD_COMPETITOR_REVIEW_2026-09-17.md
             docs/CONTROLLER_REVIEW_2026-09-17.md
+            docs/ENERGY_INTEGRATION_REVIEW_2026-09-17.md
             docs/STANDALONE_TDECK_REQUIREMENTS.md
             docs/BASELINE_TEMPLATE.md
             docs/BUILD_PHASE_1_PLAN.md
@@ -62,6 +64,7 @@ jobs:
             docs/adr/0003-feature-stability-and-flags.md
             docs/adr/0004-logical-packet-identity.md
             docs/adr/0005-standalone-internal-storage.md
+            docs/adr/0006-energy-manager-and-rf-harvest-isolation.md
           )
           for f in "${required[@]}"; do
             test -s "$f" || { echo "Missing or empty required file: $f"; exit 1; }
