@@ -1,6 +1,7 @@
 #include "mog_core.h"
 
 #include <limits.h>
+#include <string.h>
 
 static int reserve_next_window(mog_packet_id_generator_t *gen) {
     if (!gen || !gen->write || gen->reserve == 0) {
@@ -30,6 +31,15 @@ int mog_packet_id_generator_init(mog_packet_id_generator_t *gen,
         return MOG_CORE_ERR_ARG;
     }
 
+    /* Fail closed even when a caller reuses an old stack/static object. If
+     * persistence read/reserve fails below, a subsequent next() cannot issue
+     * from stale generator state left by an earlier initialization. */
+    memset(gen, 0, sizeof(*gen));
+    gen->reserve = reserve;
+    gen->read = read_fn;
+    gen->write = write_fn;
+    gen->ctx = ctx;
+
     uint64_t old_ceiling = 0;
     if (read_fn(&old_ceiling, ctx) != 0) {
         return MOG_CORE_ERR_STORE;
@@ -38,22 +48,17 @@ int mog_packet_id_generator_init(mog_packet_id_generator_t *gen,
         return MOG_CORE_ERR_EXHAUSTED;
     }
 
-    gen->next = 0;
     gen->durable_ceiling = old_ceiling;
-    gen->reserve = reserve;
-    gen->read = read_fn;
-    gen->write = write_fn;
-    gen->ctx = ctx;
-    gen->ready = false;
-
     return reserve_next_window(gen);
 }
 
 int mog_packet_id_next(mog_packet_id_generator_t *gen, mog_packet_id_t *out) {
-    if (!gen || !out || !gen->ready) {
+    if (!gen || !out) {
         return MOG_CORE_ERR_ARG;
     }
-
+    if (!gen->ready) {
+        return MOG_CORE_ERR_STATE;
+    }
     if (gen->next == 0) {
         return MOG_CORE_ERR_STATE;
     }
