@@ -45,6 +45,8 @@ components/
   mog_airtime/
   mog_radio_scheduler/
   mog_rf_intelligence/
+  mog_energy/
+  mog_energy_rf_harvest/
   mog_rf_assist/
   mog_health/
   mog_metrics/
@@ -56,7 +58,7 @@ test/
   host/unit tests
 
 simulator/
-  deterministic network scenarios and simulation glue
+  deterministic network, energy-policy and hardware-provider scenarios
 
 docs/
   architecture, decisions, evidence and operating documentation
@@ -67,17 +69,21 @@ tools/
 
 ## Ownership rules
 
-- `main/` must remain thin; reusable routing/storage/transport logic belongs in components.
-- Hardware callbacks live in their adapter/board layer and must not mutate routing state directly.
+- `main/` must remain thin; reusable routing/storage/transport/energy logic belongs in components.
+- Hardware callbacks live in their adapter/provider/board layer and must not mutate routing state directly.
 - `HybridRouter` is the only logical routing authority.
-- `test/` and `simulator/` may use the same production components; do not create separate shadow protocol implementations.
-- Lab transports remain isolated behind build flags and may not become dependencies of the stable LoRa-only core.
+- `EnergyManager` is the only logical device energy-policy authority.
+- Energy-source providers only report measurements/capabilities; they do not own routing or delivery state.
+- `test/` and `simulator/` may use the same production components; do not create separate shadow protocol or policy implementations.
+- Lab transports/providers remain isolated behind build flags and may not become dependencies of the stable LoRa-only core.
 - Board-specific pin definitions/config stay in the selected foundation's board/config layer; do not scatter GPIO constants across components.
 - Generated build output, credentials, signing keys and local SDK state never belong in Git.
 
 ## Source naming
 
 Firmware-mash-owned reusable components use the `mog_` prefix until a later ADR deliberately changes the namespace. Imported upstream code retains its original notices and naming unless modification is necessary and provenance is recorded.
+
+If needed integration/provider code does not exist upstream, implement original `mog_` code against documented vendor/SDK interfaces rather than silently dropping the feature. Do not create custom cryptographic primitives.
 
 ## Dependency direction
 
@@ -86,19 +92,23 @@ Preferred direction:
 ```text
 UI/Application
     -> Messaging/Security/Reliability
-    -> HybridRouter
+    -> HybridRouter <---- EnergyPolicySnapshot
     -> Transport interfaces
     -> Hardware drivers
+
+Board/PMIC telemetry ---> EnergyManager
+Optional RF harvest HW -> EnergyManager
 ```
 
-Lower layers must not call upward into UI or make user-facing routing decisions.
+Lower layers must not call upward into UI or make user-facing routing decisions. Hardware providers must not modify HybridRouter state directly.
 
 ## Storage placement
 
 - identity/keys/configuration: dedicated internal durable storage;
 - pending durable messages: bounded internal flash MessageStore;
-- routes/neighbors/RF history: RAM/PSRAM by default;
-- microSD: optional extension only, never required for core boot, send, receive, failover or recovery.
+- routes/neighbors/RF/energy history: RAM/PSRAM by default;
+- microSD: optional extension only, never required for core boot, send, receive, failover or recovery;
+- high-frequency energy/harvest samples: transient only unless a deliberately bounded diagnostic export is requested.
 
 ## Change rule
 
