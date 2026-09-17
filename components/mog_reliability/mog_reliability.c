@@ -14,6 +14,14 @@ static mog_reliability_entry_t *find_mut(mog_reliability_t *rel,
     return NULL;
 }
 
+static int transition(mog_reliability_entry_t *e, mog_message_state_t to)
+{
+    if (e == NULL || !mog_message_state_can_transition(e->state, to))
+        return MOG_REL_ERR_STATE;
+    e->state = to;
+    return MOG_REL_OK;
+}
+
 void mog_reliability_init(mog_reliability_t *rel)
 {
     if (rel != NULL) memset(rel, 0, sizeof(*rel));
@@ -61,13 +69,15 @@ int mog_reliability_note_send(mog_reliability_t *rel, mog_message_key_t key,
     mog_reliability_entry_t *e = find_mut(rel, key);
     uint32_t shift, delay;
     if (e == NULL) return MOG_REL_ERR_NOT_FOUND;
-    if (mog_message_state_is_terminal(e->state)) return MOG_REL_ERR_STATE;
     if (e->attempts >= e->max_attempts) {
-        e->state = MOG_MSG_FAILED_PERMANENT;
+        if (transition(e, MOG_MSG_FAILED_PERMANENT) != MOG_REL_OK)
+            return MOG_REL_ERR_STATE;
         return MOG_REL_ERR_STATE;
     }
+    if (transition(e, MOG_MSG_SENDING) != MOG_REL_OK ||
+        transition(e, MOG_MSG_WAITING_ACK) != MOG_REL_OK)
+        return MOG_REL_ERR_STATE;
     e->attempts++;
-    e->state = MOG_MSG_WAITING_ACK;
     shift = e->attempts > 1u ? (uint32_t)e->attempts - 1u : 0u;
     if (shift > 6u) shift = 6u;
     delay = e->retry_base_ms > (UINT32_MAX >> shift) ? UINT32_MAX
@@ -90,17 +100,16 @@ int mog_reliability_note_e2e_ack(mog_reliability_t *rel, mog_message_key_t key)
     mog_reliability_entry_t *e = find_mut(rel, key);
     if (e == NULL) return MOG_REL_ERR_NOT_FOUND;
     if (e->state == MOG_MSG_DELIVERED) return MOG_REL_OK;
-    if (mog_message_state_is_terminal(e->state)) return MOG_REL_ERR_STATE;
-    e->state = MOG_MSG_DELIVERED;
-    return MOG_REL_OK;
+    return transition(e, MOG_MSG_DELIVERED);
 }
 
 int mog_reliability_defer_no_route(mog_reliability_t *rel, mog_message_key_t key)
 {
     mog_reliability_entry_t *e = find_mut(rel, key);
+    int rc;
     if (e == NULL) return MOG_REL_ERR_NOT_FOUND;
-    if (mog_message_state_is_terminal(e->state)) return MOG_REL_ERR_STATE;
-    e->state = MOG_MSG_WAITING_ROUTE;
+    rc = transition(e, MOG_MSG_WAITING_ROUTE);
+    if (rc != MOG_REL_OK) return rc;
     e->next_retry_ms = 0u;
     return MOG_REL_OK;
 }
