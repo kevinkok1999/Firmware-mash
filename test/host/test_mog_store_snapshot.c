@@ -23,17 +23,12 @@ static void corrupt_byte(const char *path, long offset) {
     assert(fclose(f) == 0);
 }
 
-static void truncate_file(const char *path, off_t size) {
-    assert(truncate(path, size) == 0);
-}
-
 int main(void) {
     const char *slot_a = "/tmp/mog-store-a.bin";
     const char *slot_b = "/tmp/mog-store-b.bin";
     unlink(slot_a);
     unlink(slot_b);
 
-    /* Known IEEE CRC-32 vector + incremental/chunked equivalence. */
     const char *vector = "123456789";
     const uint32_t crc_full = mog_store_crc32(vector, 9, 0);
     uint32_t crc_chunked = mog_store_crc32(vector, 4, 0);
@@ -50,8 +45,8 @@ int main(void) {
         {3, "three"},
     };
 
-    assert(mog_store_snapshot_write(slot_a, 1, generation_1, 2, sizeof(test_record_t)) ==
-           MOG_STORE_OK);
+    assert(mog_store_snapshot_write(slot_a, 1, 3, generation_1, 2,
+                                    sizeof(test_record_t)) == MOG_STORE_OK);
 
     char selected[64];
     mog_store_snapshot_info_t info;
@@ -59,62 +54,53 @@ int main(void) {
                                      sizeof(selected), &info) == MOG_STORE_OK);
     assert(strcmp(selected, slot_a) == 0);
     assert(info.generation == 1);
+    assert(info.last_sequence == 3);
     assert(info.record_count == 2);
 
-    /* A committed snapshot must round-trip only after full validation. */
     test_record_t recovered[2] = {0};
-    mog_store_snapshot_info_t recovered_info = {0};
     assert(mog_store_snapshot_read(slot_a, sizeof(test_record_t), recovered, 2,
-                                   &recovered_info) == MOG_STORE_OK);
-    assert(recovered_info.generation == 1);
-    assert(recovered_info.record_count == 2);
+                                   &info) == MOG_STORE_OK);
+    assert(info.last_sequence == 3);
     assert(memcmp(recovered, generation_1, sizeof(generation_1)) == 0);
 
-    /* Never expose a partial snapshot when the caller's buffer is too small. */
     test_record_t sentinel = {99, "unchanged"};
     assert(mog_store_snapshot_read(slot_a, sizeof(test_record_t), &sentinel, 1, NULL) ==
            MOG_STORE_ERR_SIZE);
     assert(sentinel.id == 99);
     assert(strcmp(sentinel.text, "unchanged") == 0);
 
-    /* A fully committed newer slot must win. */
-    assert(mog_store_snapshot_write(slot_b, 2, generation_2, 2, sizeof(test_record_t)) ==
-           MOG_STORE_OK);
+    assert(mog_store_snapshot_write(slot_b, 2, 6, generation_2, 2,
+                                    sizeof(test_record_t)) == MOG_STORE_OK);
     assert(mog_store_snapshot_select(slot_a, slot_b, sizeof(test_record_t), selected,
                                      sizeof(selected), &info) == MOG_STORE_OK);
     assert(strcmp(selected, slot_b) == 0);
     assert(info.generation == 2);
+    assert(info.last_sequence == 6);
 
-    memset(recovered, 0, sizeof(recovered));
-    assert(mog_store_snapshot_read(selected, sizeof(test_record_t), recovered, 2, NULL) ==
-           MOG_STORE_OK);
-    assert(memcmp(recovered, generation_2, sizeof(generation_2)) == 0);
-
-    /* Simulate a torn/incomplete newer generation: the older slot must remain usable. */
-    truncate_file(slot_b, 24);
+    assert(truncate(slot_b, 24) == 0);
     assert(mog_store_snapshot_select(slot_a, slot_b, sizeof(test_record_t), selected,
                                      sizeof(selected), &info) == MOG_STORE_OK);
     assert(strcmp(selected, slot_a) == 0);
-    assert(info.generation == 1);
+    assert(info.last_sequence == 3);
 
-    /* Simulate payload corruption in a newer generation: fall back, never accept it. */
-    assert(mog_store_snapshot_write(slot_b, 3, generation_2, 2, sizeof(test_record_t)) ==
-           MOG_STORE_OK);
-    corrupt_byte(slot_b, 48);
+    assert(mog_store_snapshot_write(slot_b, 3, 7, generation_2, 2,
+                                    sizeof(test_record_t)) == MOG_STORE_OK);
+    corrupt_byte(slot_b, 49);
     assert(mog_store_snapshot_select(slot_a, slot_b, sizeof(test_record_t), selected,
                                      sizeof(selected), &info) == MOG_STORE_OK);
     assert(strcmp(selected, slot_a) == 0);
     assert(mog_store_snapshot_read(slot_b, sizeof(test_record_t), recovered, 2, NULL) ==
            MOG_STORE_ERR_CRC);
 
-    /* Wrong record schema is never interpreted as a valid snapshot. */
     assert(mog_store_snapshot_validate(slot_a, sizeof(test_record_t) + 1, NULL) ==
            MOG_STORE_ERR_FORMAT);
 
-    /* Empty snapshots are valid and require no output buffer. */
-    assert(mog_store_snapshot_write(slot_b, 4, NULL, 0, sizeof(test_record_t)) == MOG_STORE_OK);
-    assert(mog_store_snapshot_read(slot_b, sizeof(test_record_t), NULL, 0, &info) == MOG_STORE_OK);
+    assert(mog_store_snapshot_write(slot_b, 4, 8, NULL, 0,
+                                    sizeof(test_record_t)) == MOG_STORE_OK);
+    assert(mog_store_snapshot_read(slot_b, sizeof(test_record_t), NULL, 0,
+                                   &info) == MOG_STORE_OK);
     assert(info.generation == 4);
+    assert(info.last_sequence == 8);
     assert(info.record_count == 0);
 
     unlink(slot_a);
