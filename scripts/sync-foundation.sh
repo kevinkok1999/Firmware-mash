@@ -18,22 +18,23 @@ if [[ -z "$foundation_repo" || ! "$foundation_commit" =~ ^[0-9a-f]{40}$ ]]; then
   exit 1
 fi
 
-case "$foundation_repo" in
-  https://github.com/*/*.git|https://github.com/*/*) ;;
-  *)
-    echo "BLOCKED: foundation_repo must be an explicit public GitHub HTTPS repository" >&2
-    exit 1
-    ;;
-esac
+if [[ "$foundation_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  foundation_url="https://github.com/${foundation_repo}.git"
+elif [[ "$foundation_repo" =~ ^https://github.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?$ ]]; then
+  foundation_url="$foundation_repo"
+else
+  echo "BLOCKED: foundation_repo must be owner/repo or an explicit public GitHub HTTPS repository" >&2
+  exit 1
+fi
 
 mkdir -p "$(dirname "$dest")"
 
 if [[ ! -d "$dest/.git" ]]; then
   rm -rf "$dest"
-  git clone --filter=blob:none --no-checkout "$foundation_repo" "$dest"
+  git clone --filter=blob:none --no-checkout "$foundation_url" "$dest"
 fi
 
-git -C "$dest" remote set-url origin "$foundation_repo"
+git -C "$dest" remote set-url origin "$foundation_url"
 git -C "$dest" fetch --force --no-tags origin "$foundation_commit"
 git -C "$dest" checkout --detach --force "$foundation_commit"
 git -C "$dest" clean -ffdqx
