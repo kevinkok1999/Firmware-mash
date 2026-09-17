@@ -42,6 +42,7 @@ jobs:
             echo 'BLOCKED: final controller review missing.' >&2
             exit 1
           }
+          test -s docs/THREE_PHASE_IMPLEMENTATION_PLAN.md
           test -s docs/FLASHER_RELEASE_CONTRACT.md
           test -s docs/TEST_TRACEABILITY.md
           test -s docs/BUILD_CONFIG_MATRIX.md
@@ -54,10 +55,14 @@ jobs:
             }
           fi
 
-          test -x scripts/release-package.sh || {
+          test -s scripts/release-package.sh || {
             echo 'BLOCKED: scripts/release-package.sh has not been implemented yet.' >&2
             exit 1
           }
+
+      - name: Execute complete Phase 3 gate
+        shell: bash
+        run: bash scripts/phase-gate.sh 3
 
       - name: Build and package exact release
         shell: bash
