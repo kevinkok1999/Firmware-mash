@@ -168,13 +168,22 @@ static int checkpoint_state(const mog_store_state_t *source, uint64_t last_seque
     return 0;
 }
 
+static void recover_after_checkpoint_failure(const char *reason) {
+    ESP_LOGW(TAG, "%s; rebuilding RAM mirror from durable state", reason);
+    if (recover_state() != 0) {
+        ESP_LOGE(TAG, "durable recovery after checkpoint failure also failed");
+        s_initialized = false;
+    }
+}
+
 static void maybe_checkpoint_updates(void) {
     if (s_ops_since_checkpoint < MOG_JOURNAL_CHECKPOINT_OPS) {
         return;
     }
     const uint64_t last_sequence = s_next_sequence - 1;
     if (checkpoint_state(&s_state, last_sequence) != 0) {
-        ESP_LOGW(TAG, "periodic journal checkpoint failed; journal remains authoritative");
+        recover_after_checkpoint_failure(
+            "periodic journal checkpoint did not complete cleanly");
     }
 }
 
@@ -206,7 +215,7 @@ static int append_put(const stored_msg_t *msg) {
         s_ops_since_checkpoint++;
     }
     maybe_checkpoint_updates();
-    return 0;
+    return s_initialized ? 0 : -1;
 }
 
 int msg_store_spiffs_init(void) {
@@ -244,10 +253,19 @@ int msg_store_spiffs_save(const stored_msg_t *msg) {
         ESP_LOGE(TAG, "save rejected duplicate uid=%" PRIu32, msg->uid);
         return -1;
     }
+
+    /* Bramble calls rollover only after a successful save. If the restored
+     * durable store is already at capacity, waiting for that caller-side
+     * rollover creates a permanent full-store deadlock. Compact first here. */
     if (s_state.count >= s_state.capacity) {
-        ESP_LOGE(TAG, "durable store full before rollover");
-        return -1;
+        msg_store_spiffs_rollover(CONFIG_BRAMBLE_MSG_PERSIST_MAX,
+                                  CONFIG_BRAMBLE_MSG_PERSIST_ROLLOVER_KEEP_PCT);
+        if (!s_initialized || s_state.count >= s_state.capacity) {
+            ESP_LOGE(TAG, "durable store remains full after proactive rollover");
+            return -1;
+        }
     }
+
     return append_put(msg);
 }
 
@@ -336,8 +354,9 @@ void msg_store_spiffs_rollover(int max_messages, int keep_pct) {
 
     const uint64_t last_sequence = s_next_sequence - 1;
     if (!build_ok || checkpoint_state(&compact, last_sequence) != 0) {
-        ESP_LOGE(TAG, "transactional rollover failed; previous durable state retained");
+        ESP_LOGE(TAG, "transactional rollover did not complete cleanly");
         heap_caps_free(compact_records);
+        recover_after_checkpoint_failure("rollover checkpoint failed");
         return;
     }
 
