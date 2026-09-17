@@ -10,6 +10,7 @@ This directory is the design and evidence source of truth before production firm
 - `ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` — master execution contract for a coding agent.
 - `UI_UX_CONTRACT.md` — smartphone-like T-Deck user experience.
 - `PACKET_DELIVERY_CONTRACT.md` — PacketId, ACK, delayed-delivery and exactly-once presentation semantics.
+- `WIRE_PROTOCOL_CONTRACT.md` — transport-neutral wire layering, versioning and compatibility rules.
 - `STANDALONE_TDECK_REQUIREMENTS.md` — no-microSD, internal-storage and recovery requirements.
 - `MESSAGE_STORE_DESIGN.md` — durable internal queued-message storage contract.
 - `BUILD_CONFIG_MATRIX.md` — canonical baseline, LoRa-stable, hybrid-beta and lab configurations.
@@ -38,6 +39,7 @@ This directory is the design and evidence source of truth before production firm
 - `UPSTREAM_AUDIT_2026-09-17.md` — upstream technology snapshot.
 - `PREBUILD_REVIEW_2026-09-17.md` — adversarial pre-build review.
 - `REAL_WORLD_COMPETITOR_REVIEW_2026-09-17.md` — real-world standalone usability review.
+- `CONTROLLER_REVIEW_2026-09-17.md` — final code-readiness contradiction/gap review.
 - `RISK_REGISTER.md` — technical risk register and release gates.
 
 ## Testing
@@ -58,6 +60,7 @@ Do not duplicate the same normative rule across multiple documents unless one fi
 - API semantics -> `API_CONTRACTS.md`;
 - routing semantics -> `ROUTING_SPEC_DRAFT.md`;
 - packet/delivery semantics -> `PACKET_DELIVERY_CONTRACT.md`;
+- wire/layering semantics -> `WIRE_PROTOCOL_CONTRACT.md`;
 - storage/no-SD requirements -> `STANDALONE_TDECK_REQUIREMENTS.md`;
 - MessageStore internals -> `MESSAGE_STORE_DESIGN.md`;
 - build/feature configurations -> `BUILD_CONFIG_MATRIX.md`;
