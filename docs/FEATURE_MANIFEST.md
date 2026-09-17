@@ -10,6 +10,7 @@ This is the single checklist of intended product capabilities. It prevents a one
 
 - Stock LILYGO T-Deck Plus target.
 - Core operation with no microSD installed.
+- Core operation with no external energy-harvesting hardware installed.
 - Local display, keyboard, trackball/touch operation without a phone.
 - Internal identity/config persistence.
 - Internal durable pending-message storage.
@@ -51,6 +52,17 @@ This is the single checklist of intended product capabilities. It prevents a one
 - No fixed distance threshold.
 - Deterministic TTL/priority/full-store policy.
 
+### Energy management
+
+- One `EnergyManager` policy authority.
+- Battery/external-power state where the selected foundation exposes reliable telemetry.
+- Explicit hysteretic states: external power/normal/conserve/critical/survival.
+- Energy-aware background-discovery, relay and multipath budgets.
+- Energy cost available as one bounded route-score input.
+- Energy-driven deferral cannot produce a false Delivered state or change PacketId/dedup semantics.
+- Stable firmware remains complete with all RF-harvesting code/providers removed.
+- No high-frequency energy telemetry persisted to flash.
+
 ### User experience
 
 - Smartphone-like shell and navigation.
@@ -58,8 +70,9 @@ This is the single checklist of intended product capabilities. It prevents a one
 - Familiar conversation list and chat view.
 - Compact status bar with battery/network state.
 - Simple human-readable network status.
+- Human-readable energy-saving/survival indication when relevant.
 - Optional Advanced diagnostics.
-- No required transport, hop, route, retry or RF tuning by normal users.
+- No required transport, hop, route, retry, RF or power-electronics tuning by normal users.
 
 ### Reliability/health
 
@@ -67,6 +80,7 @@ This is the single checklist of intended product capabilities. It prevents a one
 - Explicit overflow/backpressure policy.
 - Storage health and recovery metrics.
 - Route/retry/airtime pressure metrics.
+- Energy-policy transition/deferral health metrics.
 - No silent failure.
 - Wrap-safe timers and stale-state recovery.
 
@@ -89,6 +103,20 @@ ESP-NOW is promoted to STABLE only after repeatable real T-Deck hardware evidenc
 
 ## LAB capabilities
 
+### Ambient RF Energy Assist
+
+- Optional external RF harvesting provider under `EnergyManager`.
+- Rectenna/harvester-PMIC telemetry where compatible hardware exists.
+- Optional external energy reservoir/supercap awareness.
+- `TX_RESERVE_READY` style event only after measured hardware characterization.
+- Measured harvested-power/energy reporting with confidence and no fabricated values.
+- Separate harvesting antenna/rectenna as the default hardware assumption.
+- Shared-antenna experiments only after insertion-loss/desense/isolation measurements.
+
+Ambient RF Energy Assist is an optional energy source, not a communications transport and not a guaranteed power source. A stock T-Deck Plus is never claimed to harvest ambient RF through firmware alone.
+
+### Other LAB capabilities
+
 - Wi-Fi Aware/NAN transport research.
 - TDMA/regional/hierarchical routing experiments if scale evidence justifies them.
 - RIS/passive RF-assist advisory integration.
@@ -101,6 +129,9 @@ LAB features must be removable and cannot become dependencies of CFG-LORA-STABLE
 - No arbitrary third-party Wi-Fi routers used as unconfigured relays.
 - No magical amplification of LoRa by unrelated ambient RF.
 - No firmware-only ambient-backscatter claim on stock T-Deck hardware.
+- No firmware-only ambient-RF energy harvesting claim on stock T-Deck hardware.
+- No guaranteed harvested-power claim without measured hardware/environment evidence.
+- No unvalidated loading/sharing of the tuned LoRa antenna for energy harvesting.
 - No microSD requirement for core messaging.
 - No manual per-message route selection in normal UI.
 - No unlimited flooding/retries/path storage.
@@ -111,11 +142,15 @@ LAB features must be removable and cannot become dependencies of CFG-LORA-STABLE
 
 The intended normal-user outcome is one approved T-Deck Plus release package. A user flashes it, performs only normal onboarding, and uses the advertised STABLE features. Engineering validation remains a project responsibility, not an end-user workflow.
 
+The same package may contain disabled LAB provider interfaces, but no normal user is told that RF harvesting works unless compatible hardware is actually present and validated.
+
 ## Implementation completeness rule
 
 A one-shot coding pass is complete only when every STABLE feature above has either:
 
 1. implementation + mapped passing evidence, or
 2. an explicit documented blocker based on measured baseline/hardware facts.
+
+The EnergyManager software layer is part of this implementation completeness rule. The physical ambient-RF harvester is not: its interface/simulator path is implemented, while actual hardware promotion remains evidence-gated.
 
 A feature may not simply disappear because implementation became difficult.
