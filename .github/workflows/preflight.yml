@@ -34,6 +34,7 @@ jobs:
             docs/IMPLEMENTATION_BLUEPRINT.md
             docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md
             docs/PACKET_DELIVERY_CONTRACT.md
+            docs/WIRE_PROTOCOL_CONTRACT.md
             docs/MESSAGE_STORE_DESIGN.md
             docs/BUILD_CONFIG_MATRIX.md
             docs/TEST_TRACEABILITY.md
@@ -44,6 +45,7 @@ jobs:
             docs/PREBUILD_CHECKLIST.md
             docs/PREBUILD_REVIEW_2026-09-17.md
             docs/REAL_WORLD_COMPETITOR_REVIEW_2026-09-17.md
+            docs/CONTROLLER_REVIEW_2026-09-17.md
             docs/STANDALONE_TDECK_REQUIREMENTS.md
             docs/BASELINE_TEMPLATE.md
             docs/BUILD_PHASE_1_PLAN.md
