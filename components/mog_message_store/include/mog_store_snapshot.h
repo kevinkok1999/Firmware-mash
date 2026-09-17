@@ -37,8 +37,8 @@ uint32_t mog_store_crc32(const void *data, size_t len, uint32_t seed);
  *   3. write a self-validating committed header;
  *   4. fflush/fsync the commit header.
  *
- * The caller writes only to the inactive slot. The previously committed slot
- * remains untouched until this function has returned success.
+ * The caller writes only to an inactive/shadow path. Existing committed state
+ * must remain untouched until this function returns success.
  */
 int mog_store_snapshot_write(const char *path,
                              uint64_t generation,
@@ -50,6 +50,20 @@ int mog_store_snapshot_write(const char *path,
 int mog_store_snapshot_validate(const char *path,
                                 uint32_t expected_record_size,
                                 mog_store_snapshot_info_t *out_info);
+
+/*
+ * Validate and read a complete committed snapshot.
+ *
+ * `records_capacity` is measured in records, not bytes. If the snapshot holds
+ * more records than the supplied capacity, MOG_STORE_ERR_SIZE is returned and
+ * no partial snapshot is exposed to the caller. Empty snapshots are valid and
+ * may use records == NULL with records_capacity == 0.
+ */
+int mog_store_snapshot_read(const char *path,
+                            uint32_t expected_record_size,
+                            void *records,
+                            uint32_t records_capacity,
+                            mog_store_snapshot_info_t *out_info);
 
 /* Pick the newest valid generation. If one slot is torn/corrupt, use the other. */
 int mog_store_snapshot_select(const char *slot_a,
