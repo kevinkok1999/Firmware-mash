@@ -6,6 +6,7 @@ cd "$repo_root"
 
 required_suites=(
   test/phase2/test_core
+  test/phase2/test_events
   test/phase2/test_conversation
   test/phase2/test_energy
   test/phase2/test_lora
