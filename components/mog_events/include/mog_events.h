@@ -44,7 +44,6 @@ typedef enum {
 
 typedef struct {
     mog_event_type_t type;
-    mog_event_class_t event_class;
     mog_message_key_t message;
     uint32_t source;
     uint32_t arg0;
@@ -70,12 +69,16 @@ typedef struct {
     bool resync_required;
 } mog_event_queue_t;
 
+mog_event_class_t mog_event_class_for_type(mog_event_type_t type);
+
 int mog_event_queue_init(mog_event_queue_t *queue,
                          mog_event_t *storage,
                          size_t capacity);
 
 /*
- * Bounded overflow policy:
+ * Bounded overflow policy. Priority is derived from event TYPE, never supplied
+ * by the caller, so a DELIVERY_ACK cannot accidentally be labelled telemetry.
+ *
  * - telemetry on a full queue is dropped and counted;
  * - control on a full queue evicts the oldest telemetry event if one exists;
  * - if a full queue contains only control events, the new control event is not
