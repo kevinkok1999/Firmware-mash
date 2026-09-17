@@ -33,6 +33,15 @@ Firmware-mash uses evidence tiers:
 23. Queued message to an unreachable destination; install a new indirect route and verify immediate event-driven retry without waiting for a fixed periodic timer.
 24. Vary the range/link quality at which reachability returns and verify there is no hard-coded 200 m/500 m/1 km distance trigger.
 25. Verify a single noisy RSSI sample does not create a retry storm; retry eligibility follows credible usable-link/path evidence.
+26. Feed noisy battery/source telemetry and verify EnergyManager hysteresis prevents state flapping.
+27. Enter CONSERVE/CRITICAL/SURVIVAL and verify discovery, relay and multipath work remains bounded while durable user messages remain correct.
+28. Defer a transmission for energy policy and verify the UI/reliability state never becomes Delivered without an end-to-end ACK.
+29. Inject stale/impossible energy samples and verify they are rejected or marked low-confidence without routing corruption.
+30. Run with RF-harvest provider absent/unavailable and verify behavior equals stock energy policy.
+31. Run mock RF-harvest provider with intermittent energy input and verify bounded EnergyManager transitions.
+32. Trigger mock `TX_RESERVE_READY` repeatedly and verify ReliabilityManager/AirtimeManager/backoff still gate actual sends.
+33. Compare route selection with small energy-cost changes and verify hysteresis prevents route oscillation.
+34. Remove/disable the RF-harvest provider at build time and verify the same stable core still compiles/tests.
 
 ## Metrics
 
@@ -55,6 +64,10 @@ Capture at minimum:
 - message-store append/compaction counters;
 - CPU where measurable;
 - store-forward success/expiry;
+- energy-state transitions;
+- energy-policy deferrals;
+- external-power/harvester provider availability;
+- invalid/stale energy sample count;
 - power impact in hardware tests.
 
 ## First hardware acceptance test
@@ -107,6 +120,36 @@ Failure of this test blocks STABLE promotion.
 
 `T-Deck A --ESP-NOW--> T-Deck B --LoRa--> C --LoRa--> T-Deck D`. Confirm end-to-end ACK/delivery. Then disable ESP-NOW. If a LoRa-only alternate exists, routing must fail over automatically. If it does not exist, message must enter an explicit waiting/no-route state rather than silently disappear.
 
+## EnergyManager hardware acceptance
+
+On stock T-Deck Plus hardware, with **no RF-harvesting accessory required**:
+
+1. Boot on battery and confirm NORMAL policy.
+2. Connect/disconnect supported external/USB power and confirm bounded source/state transitions.
+3. Exercise validated battery thresholds around transitions using controlled conditions or test hooks; verify hysteresis prevents rapid flapping.
+4. Confirm messaging truth, PacketId and durable queued messages remain correct during transitions.
+5. Confirm CRITICAL/SURVIVAL policy reduces only allowed background/relay/multipath work.
+6. Confirm LoRa-only messaging/recovery remains operational according to the defined minimum policy.
+7. Confirm UI remains responsive and uses human-readable power state.
+
+Exact threshold values must come from the board/battery/PMIC characterization rather than this document.
+
+## Ambient RF Energy Assist hardware acceptance
+
+Required only when a real optional harvesting accessory exists. Before the feature leaves LAB:
+
+1. identify the exact rectenna/harvesting-antenna, PMIC, storage element and hardware revision;
+2. measure actual harvested power/energy under documented RF conditions;
+3. measure provider/PMIC quiescent overhead and calculate net useful energy;
+4. verify storage/reservoir charge/discharge hysteresis under intermittent input;
+5. compare LoRa sensitivity/range-relevant RF metrics with harvesting hardware disconnected vs connected;
+6. test receiver desense, insertion loss and TX isolation where applicable;
+7. verify a TX-reserve event cannot cause a brownout or corrupt durable message state;
+8. unplug/fault the harvesting accessory and verify immediate safe fallback to normal battery operation;
+9. measure actual battery/runtime impact rather than claiming benefit from rectifier output alone.
+
+A separate harvesting antenna/rectenna is the default test architecture. Any shared-antenna configuration requires its own explicit RF evidence.
+
 ## Power/battery acceptance
 
 Measure at minimum:
@@ -115,14 +158,17 @@ Measure at minimum:
 - LoRa receive/relay activity;
 - ESP-NOW discovery enabled;
 - display active vs idle/dimmed;
-- GNSS on/off where used.
+- GNSS on/off where used;
+- EnergyManager sampling/policy overhead;
+- CONSERVE/CRITICAL/SURVIVAL behavior;
+- optional harvester provider overhead when real hardware exists.
 
-Do not promote a hybrid feature without documenting its incremental power cost on real hardware.
+Do not promote a hybrid or harvesting feature without documenting its incremental power cost on real hardware.
 
 ## LoRa-only regression gate
 
-Every beta/lab feature can be disabled. A LoRa-only build must continue to compile, boot and pass its baseline communication tests without a microSD card.
+Every beta/lab feature can be disabled. A LoRa-only build must continue to compile, boot and pass its baseline communication tests without a microSD card **and without any RF-harvesting accessory**.
 
 ## No fake evidence
 
-A green compile is only a compile result. Simulator success is not hardware validation. A single successful field message is not a scale claim. Every report must state which evidence tier supports it.
+A green compile is only a compile result. Simulator success is not hardware validation. A single successful field message is not a scale claim. A mock harvester is not proof of real harvested energy. Every report must state which evidence tier supports it.
