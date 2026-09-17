@@ -163,6 +163,18 @@ int mog_reliability_note_e2e_ack(mog_reliability_t *rel, mog_message_key_t key)
     mog_reliability_entry_t *e = find_mut(rel, key);
     if (e == NULL) return MOG_REL_ERR_NOT_FOUND;
     if (e->state == MOG_MSG_DELIVERED) return MOG_REL_OK;
+
+    /* After reboot, durable SENDING/WAITING_ACK is intentionally restored as
+     * READY because a monotonic retry deadline cannot survive reset. A valid
+     * late E2E ACK for an already-attempted message must still be able to
+     * converge that same logical message to Delivered. Preserve the central
+     * lifecycle contract by traversing its legal READY->SENDING->DELIVERED
+     * path; attempts>0 proves this is acknowledgement of prior send work and
+     * prevents a never-sent READY message from being marked delivered. */
+    if (e->state == MOG_MSG_READY && e->attempts > 0u) {
+        if (transition(e, MOG_MSG_SENDING) != MOG_REL_OK)
+            return MOG_REL_ERR_STATE;
+    }
     return transition(e, MOG_MSG_DELIVERED);
 }
 
