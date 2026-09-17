@@ -29,6 +29,10 @@ Firmware-mash uses evidence tiers:
 19. Message-store recovery after an incomplete/corrupt final record.
 20. Deterministic eviction when durable store is full.
 21. Rebuild volatile route/neighbor state after simulated reboot while preserving durable pending messages.
+22. Queued message to an unreachable destination; restore direct reachability and verify immediate event-driven retry without user action.
+23. Queued message to an unreachable destination; install a new indirect route and verify immediate event-driven retry without waiting for a fixed periodic timer.
+24. Vary the range/link quality at which reachability returns and verify there is no hard-coded 200 m/500 m/1 km distance trigger.
+25. Verify a single noisy RSSI sample does not create a retry storm; retry eligibility follows credible usable-link/path evidence.
 
 ## Metrics
 
@@ -38,6 +42,7 @@ Capture at minimum:
 - median and p95 latency;
 - route discovery time;
 - failover recovery time;
+- queued-message route-recovery-to-retry latency;
 - transmissions per delivered message;
 - retransmission count;
 - control bytes/packets;
@@ -55,6 +60,30 @@ Capture at minimum:
 ## First hardware acceptance test
 
 Use four nodes A/B/C/D. A cannot directly reach D. Two usable routes exist: `A-B-D` and `A-C-D`. Start on B, then power B off. Without reboot, app, phone or manual route selection, A must recover through C. Log detection time, invalidation reason, route selected, packet loss and recovery time.
+
+## Re-entry / delayed-delivery hardware acceptance test
+
+Use two T-Deck Plus units with no microSD requirement:
+
+1. Establish normal direct communication.
+2. Move one unit far enough away that no valid route exists.
+3. Send a message; sender must retain it as `WAITING_ROUTE`/queued rather than discard it.
+4. Bring the units back toward each other.
+5. At the first point where the radio stack obtains credible usable-link/path evidence, the queued message must become immediately eligible for retry.
+6. The user must not press Send again.
+7. Delivery must complete once end-to-end ACK is received.
+8. The application must display the message exactly once even if multiple retry/path events occur.
+
+This test is intentionally **not tied to a fixed distance**. The actual point of recovery may be 50 m, 200 m, 800 m or another distance depending on environment, radio mode, antenna orientation and obstructions.
+
+Record:
+
+- transport/path that recovered first;
+- time from usable-link/path event to first retry;
+- time from event to delivered ACK;
+- retries performed;
+- duplicates suppressed;
+- RSSI/SNR/link evidence for diagnostics only.
 
 ## Standalone no-microSD acceptance test
 
