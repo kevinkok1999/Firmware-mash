@@ -113,11 +113,69 @@ DELIVERY_ACK
 DELIVERY_TIMEOUT
 STORE_RETRY
 RF_METRICS_CHANGED
+ENERGY_STATE_CHANGED
+ENERGY_SOURCE_CHANGED
+TX_RESERVE_READY
 ```
 
-`LINK_RECOVERED`, `NEIGHBOR_UP`, `ROUTE_DISCOVERED`, `ROUTE_AVAILABLE` and `TRANSPORT_RECOVERED` may make a durable `WAITING_ROUTE` message immediately retry-eligible. They never bypass ReliabilityManager, AirtimeManager or bounded anti-storm backoff/jitter.
+`LINK_RECOVERED`, `NEIGHBOR_UP`, `ROUTE_DISCOVERED`, `ROUTE_AVAILABLE` and `TRANSPORT_RECOVERED` may make a durable `WAITING_ROUTE` message immediately retry-eligible. `TX_RESERVE_READY` may make an energy-deferred attempt eligible for reevaluation when compatible hardware exists. None of these events bypass ReliabilityManager, AirtimeManager or bounded anti-storm backoff/jitter.
 
 All events use a bounded queue/pool. Overflow increments an observable health counter and follows a documented drop/backpressure policy.
+
+## EnergyManager
+
+Energy policy is separate from routing and transport ownership.
+
+Conceptual state:
+
+```c
+typedef enum {
+    MOG_ENERGY_EXTERNAL_POWER = 0,
+    MOG_ENERGY_NORMAL,
+    MOG_ENERGY_CONSERVE,
+    MOG_ENERGY_CRITICAL,
+    MOG_ENERGY_SURVIVAL,
+} mog_energy_state_t;
+```
+
+Conceptual provider sample:
+
+```c
+typedef struct {
+    bool available;
+    bool external_power;
+    uint32_t source_flags;
+    uint32_t voltage_mv;
+    int32_t current_ua;
+    int32_t power_uw;
+    uint32_t storage_voltage_mv;
+    uint8_t confidence;
+    uint32_t sample_age_ms;
+} mog_energy_sample_t;
+```
+
+Unknown current/power/reservoir values must be representable as unknown; they are never fabricated.
+
+Providers expose the equivalent of:
+
+```text
+init()
+available()
+sample()
+capabilities()
+health()
+```
+
+Consumers receive an immutable normalized `EnergyPolicySnapshot` containing at least energy state, external-power presence, optional harvest availability/power class, relay/discovery/multipath budgets and an energy-cost bias.
+
+Hard rules:
+
+- `EnergyManager` is the only device energy-policy authority;
+- HybridRouter consumes normalized energy information only;
+- no routing module reads PMIC/ADC registers directly;
+- an RF-harvest provider is not a `TransportAdapter`;
+- harvesting hardware may be absent without breaking boot, messaging or LoRa;
+- policy thresholds use hysteresis and are frozen from measured board/hardware evidence rather than guessed constants.
 
 ## Neighbor record
 
@@ -184,6 +242,8 @@ No adapter owns a RouteSet.
 
 Input includes ETX/PDR, latency, airtime, congestion, energy, freshness, stability and diversity. Output must include enough diagnostics to explain why a path won. Scoring configuration is versioned (`route-score-v1`, etc.) so simulator comparisons remain reproducible.
 
+Energy cost is bounded input from link metrics plus EnergyPolicySnapshot. Reliability may not be sacrificed for tiny energy savings without explicit policy evidence.
+
 Do not hardcode a permanent score before simulator and hardware data exist.
 
 ## PathDiversityEvaluator
@@ -219,7 +279,9 @@ NORMAL
 CRITICAL
 ```
 
-CRITICAL does not automatically duplicate traffic. A second independent path is permitted only if policy and airtime budget allow it.
+CRITICAL does not automatically duplicate traffic. A second independent path is permitted only if policy, airtime and energy budgets allow it.
+
+Energy-driven deferral must not be represented as Delivered/Failed unless ReliabilityManager reaches the corresponding actual state.
 
 ## Dedup
 
@@ -243,13 +305,15 @@ FAILED_PERMANENT
 
 Storage is bounded, encrypted at the appropriate security boundary, TTL-controlled and uses deterministic priority/eviction behavior.
 
+Energy policy may defer work but does not mutate the logical PacketId or discard a committed message outside normal TTL/priority/full-store policy.
+
 ## AirtimeManager
 
 Every SX1262 transmit request passes one gate. It receives packet priority, estimated airtime, retry/failover context and region configuration, and can defer/reject transmission when budgets would be exceeded. No module may bypass it.
 
 ## 2.4 GHz RadioScheduler
 
-Coordinates ESP-NOW, Wi-Fi/NAN, BLE and scans on the ESP32-S3 shared 2.4 GHz radio. Requests provide priority, deadline/duration estimate and preemptibility. It is not a routing engine.
+Coordinates ESP-NOW, Wi-Fi/NAN, BLE and scans on the ESP32-S3 shared 2.4 GHz radio. Requests provide priority, deadline/duration estimate and preemptibility. It is not a routing engine. EnergyManager may provide a background-radio budget but cannot directly create routes.
 
 ## RfIntelligence
 
@@ -270,10 +334,12 @@ report_gain(target)
 
 It does not become a logical hop merely because it changes RF propagation.
 
+RF energy harvesting is separate from RfAssistProvider and belongs under EnergyManager.
+
 ## NetworkHealthManager
 
-Must expose counters/high-water marks for packet/event pool pressure, route-table pressure, peer exhaustion, retries, loops detected, store pressure, airtime pressure and stalled adapter/task state.
+Must expose counters/high-water marks for packet/event pool pressure, route-table pressure, peer exhaustion, retries, loops detected, store pressure, airtime pressure, energy-policy deferrals, invalid energy samples, optional harvester health and stalled adapter/task state.
 
 ## Time contract
 
-Routing/retry/store timers use one monotonic abstraction. Elapsed/deadline helpers must be wrap-safe. State is represented by explicit enums/flags rather than overloading timestamp sentinel values where avoidable.
+Routing/retry/store/energy timers use one monotonic abstraction. Elapsed/deadline helpers must be wrap-safe. State is represented by explicit enums/flags rather than overloading timestamp sentinel values where avoidable.
