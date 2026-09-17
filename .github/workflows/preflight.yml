@@ -1,0 +1,58 @@
+name: preflight
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  repository-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Required project files
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            LICENSE
+            README.md
+            SECURITY.md
+            CONTRIBUTING.md
+            docs/ARCHITECTURE.md
+            docs/LICENSING.md
+            docs/PREBUILD_CHECKLIST.md
+            docs/RISK_REGISTER.md
+            docs/ROADMAP.md
+            docs/TESTING.md
+            docs/adr/0001-single-routing-authority.md
+            docs/adr/0002-foundation-selection-gate.md
+            docs/adr/0003-feature-stability-and-flags.md
+          )
+          for f in "${required[@]}"; do
+            test -s "$f" || { echo "Missing or empty required file: $f"; exit 1; }
+          done
+      - name: Reject committed private keys and obvious secret files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find . -type f \( -name '*.pem' -o -name '*.key' -o -name 'secrets.*' -o -name '.env' \) -not -path './.git/*' | grep -q .; then
+            echo 'Potential secret/private-key file committed.'
+            find . -type f \( -name '*.pem' -o -name '*.key' -o -name 'secrets.*' -o -name '.env' \) -not -path './.git/*'
+            exit 1
+          fi
+      - name: Ensure no production source was added before baseline gate
+        if: ${{ !hashFiles('docs/BASELINE_APPROVED') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for d in components main firmware src; do
+            if [ -d "$d" ] && find "$d" -type f | grep -q .; then
+              echo "Production source directory '$d' exists before docs/BASELINE_APPROVED gate."
+              exit 1
+            fi
+          done
