@@ -21,15 +21,32 @@ actual_commit="$(git -C "$foundation_dir" rev-parse HEAD)"
   exit 1
 }
 
+# Verify the exact upstream storage backend blob before replacing it. This is
+# deliberately stricter than a fuzzy patch: if upstream changes the backend,
+# the overlay must be reviewed against that new source rather than silently
+# applying assumptions from the approved baseline.
+upstream_store="${foundation_dir}/components/msg_store/msg_store_spiffs.c"
+expected_store_blob="dfdabad14de56d49e55d525d2e23e27eb3b1c7e5"
+actual_store_blob="$(git -C "$foundation_dir" hash-object components/msg_store/msg_store_spiffs.c)"
+[[ "$actual_store_blob" == "$expected_store_blob" ]] || {
+  echo "BLOCKED: upstream msg_store_spiffs.c blob changed: ${actual_store_blob}" >&2
+  exit 1
+}
+
 # Overlay only Firmware-mash-owned components. The upstream checkout itself
 # remains detached at the pinned commit so provenance is always recoverable.
 rm -rf "${foundation_dir}/components/mog_message_store"
 cp -R "${repo_root}/components/mog_message_store" \
       "${foundation_dir}/components/mog_message_store"
 
-# Force ESP-IDF to compile the Firmware-mash storage component as part of the
-# real Bramble msg_store dependency graph. This is intentionally idempotent and
-# fails closed if the pinned upstream CMake shape unexpectedly changes.
+# Replace the persistence adapter while preserving Bramble's public
+# msg_store_spiffs_* API for the rest of the firmware.
+cp "${repo_root}/overlay/bramble/components/msg_store/msg_store_spiffs.c" \
+   "$upstream_store"
+
+# Force ESP-IDF to compile/link the Firmware-mash durability component as part
+# of Bramble's real msg_store dependency graph. This is intentionally
+# idempotent and fails closed if the pinned upstream CMake shape changes.
 cmake_file="${foundation_dir}/components/msg_store/CMakeLists.txt"
 python3 - "$cmake_file" <<'PY'
 from pathlib import Path
@@ -51,6 +68,7 @@ overlay_commit="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown
 cat > "${foundation_dir}/.firmware-mash-overlay" <<EOF
 foundation_commit=${expected_commit}
 firmware_mash_commit=${overlay_commit}
+message_store_adapter=transactional-journal-snapshot
 EOF
 
 echo "Firmware-mash overlay applied to ${foundation_dir}"
