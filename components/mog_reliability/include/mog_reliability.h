@@ -38,6 +38,15 @@ typedef struct {
 void mog_reliability_init(mog_reliability_t *rel);
 int mog_reliability_track(mog_reliability_t *rel, mog_message_key_t key,
                           uint8_t max_attempts, uint32_t retry_base_ms);
+/* Rebuild runtime tracking only from state already committed by the
+ * authoritative MessageStore. Monotonic retry deadlines are deliberately not
+ * restored across reboot: SENDING/WAITING_ACK become READY for a bounded
+ * retry, while WAITING_ROUTE and terminal truth remain intact. Persisted
+ * attempts are retained so reboot cannot reset the retry budget. */
+int mog_reliability_restore(mog_reliability_t *rel, mog_message_key_t key,
+                            mog_message_state_t durable_state,
+                            uint8_t attempts, uint8_t max_attempts,
+                            uint32_t retry_base_ms);
 int mog_reliability_note_send(mog_reliability_t *rel, mog_message_key_t key,
                               uint32_t now_ms);
 int mog_reliability_note_link_success(mog_reliability_t *rel,
