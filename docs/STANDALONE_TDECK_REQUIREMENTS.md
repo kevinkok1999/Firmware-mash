@@ -20,10 +20,41 @@ With no microSD inserted, the device must still be able to:
 - use ESP-NOW when that feature is enabled;
 - queue outgoing messages when no route exists;
 - retain queued messages across reboot/power loss once persistent MessageStore lands;
+- automatically retry a queued message when the destination or a usable route comes back into radio range;
 - recover the message store after interrupted writes;
 - show network/queue/health status locally on the T-Deck;
 - recover/reflash through USB without requiring a card;
 - run in LoRa-only mode if all experimental transports are disabled.
+
+## Automatic recontact / delayed delivery
+
+A failed transmission is not treated as a permanently failed user message while its TTL/policy still allows delivery.
+
+Example required behavior:
+
+```text
+T-Deck A sends to T-Deck B at 5 km
+        ↓
+no usable direct or multi-hop route
+        ↓
+message stored internally as WAITING_ROUTE
+        ↓
+A and B later move to ~200 m / become reachable
+        ↓
+neighbor/route discovery event
+        ↓
+automatic bounded retry
+        ↓
+end-to-end ACK
+        ↓
+DELIVERED exactly once
+```
+
+The user must not press Send again. Recontact may happen through direct LoRa, direct ESP-NOW/ESP-NOW LR when supported, or a newly available multi-hop route. The original logical PacketId is preserved across delayed retries so deduplication and ACK correlation remain valid.
+
+Retry behavior must be event-driven and backoff-controlled: new-neighbor, route-discovered and link-recovered events may wake eligible queued messages, but the firmware must not continuously flood the channel while no route exists.
+
+If both devices stay powered on while moving, the intended UX is that a queued message can arrive automatically as soon as a valid path becomes available. Reboot is not required for this mechanism; reboot recovery is a separate durability requirement.
 
 ## Storage tiers
 
@@ -139,12 +170,15 @@ A release cannot be promoted to STABLE unless a T-Deck Plus with **no microSD ca
 3. local UI/input;
 4. LoRa send/receive;
 5. multi-hop relay;
-6. queue message with destination offline;
-7. power cycle;
-8. recover queued message;
-9. destination returns;
-10. queued message is delivered once;
-11. internal store near-full behavior is deterministic;
-12. USB recovery remains available.
+6. queue message with destination out of range/offline;
+7. keep both devices powered while returning into usable radio range;
+8. automatically retry without the user pressing Send again;
+9. destination receives the queued message exactly once;
+10. repeat the same scenario with a power cycle while queued;
+11. recover queued message after reboot;
+12. destination returns/reconnects;
+13. queued message is delivered once;
+14. internal store near-full behavior is deterministic;
+15. USB recovery remains available.
 
 MicroSD-dependent tests may exist only as optional feature tests.
