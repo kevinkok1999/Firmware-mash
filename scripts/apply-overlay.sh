@@ -21,17 +21,20 @@ actual_commit="$(git -C "$foundation_dir" rev-parse HEAD)"
   exit 1
 }
 
-# Verify the exact upstream storage backend blob before replacing it. This is
-# deliberately stricter than a fuzzy patch: if upstream changes the backend,
-# the overlay must be reviewed against that new source rather than silently
-# applying assumptions from the approved baseline.
+# Verify the persistence backend before replacing it. Accept only either the
+# exact approved upstream blob or the exact current Firmware-mash overlay blob;
+# this makes the operation idempotent without becoming permissive.
 upstream_store="${foundation_dir}/components/msg_store/msg_store_spiffs.c"
+overlay_store="${repo_root}/overlay/bramble/components/msg_store/msg_store_spiffs.c"
 expected_store_blob="dfdabad14de56d49e55d525d2e23e27eb3b1c7e5"
 actual_store_blob="$(git -C "$foundation_dir" hash-object components/msg_store/msg_store_spiffs.c)"
-[[ "$actual_store_blob" == "$expected_store_blob" ]] || {
-  echo "BLOCKED: upstream msg_store_spiffs.c blob changed: ${actual_store_blob}" >&2
+overlay_store_blob="$(git hash-object "$overlay_store")"
+
+if [[ "$actual_store_blob" != "$expected_store_blob" && \
+      "$actual_store_blob" != "$overlay_store_blob" ]]; then
+  echo "BLOCKED: msg_store_spiffs.c is neither approved upstream nor approved overlay: ${actual_store_blob}" >&2
   exit 1
-}
+fi
 
 # Overlay only Firmware-mash-owned components. The upstream checkout itself
 # remains detached at the pinned commit so provenance is always recoverable.
@@ -41,8 +44,9 @@ cp -R "${repo_root}/components/mog_message_store" \
 
 # Replace the persistence adapter while preserving Bramble's public
 # msg_store_spiffs_* API for the rest of the firmware.
-cp "${repo_root}/overlay/bramble/components/msg_store/msg_store_spiffs.c" \
-   "$upstream_store"
+if [[ "$actual_store_blob" != "$overlay_store_blob" ]]; then
+  cp "$overlay_store" "$upstream_store"
+fi
 
 # Force ESP-IDF to compile/link the Firmware-mash durability component as part
 # of Bramble's real msg_store dependency graph. This is intentionally
