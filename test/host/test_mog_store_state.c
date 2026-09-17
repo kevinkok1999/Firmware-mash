@@ -38,6 +38,15 @@ int main(void) {
     assert(info.next_sequence == 1);
     assert(info.next_generation == 1);
 
+    /* Existing but invalid snapshot data is corruption, not a fresh empty store. */
+    FILE *bad = fopen(slot_a, "wb");
+    assert(bad != NULL);
+    assert(fwrite("bad", 1, 3, bad) == 3);
+    assert(fclose(bad) == 0);
+    assert(mog_store_state_recover(&state, slot_a, slot_b, journal, &scratch,
+                                   sizeof(scratch), &info) == MOG_STATE_ERR_FORMAT);
+    unlink(slot_a);
+
     rec_t r1 = {1, 1, "one"};
     rec_t r2 = {2, 1, "two"};
     assert(mog_store_journal_append(journal, MOG_STORE_JOURNAL_PUT, 1, 1, &r1,
