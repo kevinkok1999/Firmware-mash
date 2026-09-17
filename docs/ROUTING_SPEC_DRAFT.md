@@ -119,7 +119,37 @@ CRITICAL delivery may request an additional sufficiently independent path only w
 
 ## Store-carry-forward trigger
 
-When all current candidates fail and bounded discovery produces no valid route, the message becomes queued rather than silently discarded (subject to policy/TTL/storage capacity). New-neighbor/path events may trigger a backoff-controlled retry.
+When all current candidates fail and bounded discovery produces no valid route, the message becomes queued rather than silently discarded (subject to policy/TTL/storage capacity).
+
+Queued delivery is **event driven**, not distance driven. There is no fixed retry distance such as 200 m, 500 m or 1 km.
+
+A queued message should become immediately eligible for retry when the networking layer obtains credible evidence that delivery may now be possible, for example:
+
+- a previously unreachable destination is heard directly again;
+- a new LoRa neighbor is discovered;
+- an existing neighbor/link transitions from unusable to usable;
+- ESP-NOW or ESP-NOW Long Range discovers/re-establishes a viable peer link;
+- HybridRouter installs a new valid path to the destination;
+- a cached path becomes usable again after temporary degradation.
+
+The first retry after such a route/link-up event should be scheduled with minimal latency, subject only to the central airtime/regulatory gate, radio availability and a very small anti-storm/jitter guard where required. Periodic background retries may still exist as a safety net, but they are not the primary recovery mechanism.
+
+RSSI alone is not treated as a magic numeric threshold. A usable-link decision may combine valid frame reception, neighbor freshness, RSSI/SNR or ESP-NOW link evidence, path validity and radio state. This avoids waiting for an arbitrary signal-strength number when a real packet path is already available.
+
+Example:
+
+```text
+A sends to B at 5 km -> no usable route -> WAITING_ROUTE
+A moves closer
+B becomes directly reachable at whatever distance the environment allows
+LINK/NEIGHBOR/PATH UP event
+-> queued packet becomes immediately eligible
+-> send
+-> end-to-end ACK
+-> DELIVERED
+```
+
+The user does not press Send again and does not select the recovered transport manually.
 
 ## Transport changes inside a path
 
@@ -138,4 +168,7 @@ Every installed path has freshness/last-success/failure information. Ageing must
 - route-flapping/noisy metrics do not oscillate continuously;
 - duplicate multipath arrival is delivered to application once;
 - failure with no path enters explicit store/no-route state;
+- queued message retries immediately when a valid direct link reappears;
+- queued message retries immediately when a new indirect route is installed;
+- recovery trigger is not tied to a fixed distance or hard-coded RSSI threshold;
 - high-loss and congested cases remain bounded in transmissions/control airtime.
