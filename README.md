@@ -14,21 +14,28 @@ Build one coherent communication stack in which a single `HybridRouter` can choo
 
 - Exactly one logical routing authority: `HybridRouter`.
 - LoRa-only operation must always remain possible.
+- Core boot, identity, send/receive, queued delivery and recovery must work without a microSD card.
 - No unbounded flooding, queues, routing tables or retries.
 - No custom cryptography.
 - Experimental features stay behind build flags and cannot silently become stable.
 - A compile result is not hardware validation.
 - Upstream code is reused only when licensing is compatible and notices are preserved.
 - EU868 duty-cycle and regional limits are treated as design constraints.
+- Generated build output and local credentials never belong in Git; dependency lockfiles used for reproducible application builds do.
 
 ## Planned build order
 
 1. Reproduce and pin the selected T-Deck Plus foundation.
-2. Introduce a LoRa-only HybridRouter skeleton with no behavior regression.
-3. Add bounded multipath route sets and deterministic failover.
-4. Add ESP-NOW as an optional `TransportAdapter`.
-5. Integrate hybrid forwarding and store-and-forward.
-6. Run simulator, host and real multi-node acceptance tests.
-7. Only then evaluate NAN, RF-assist, TDMA/regional routing and external backscatter.
+2. Prove standalone internal persistence/recovery with no microSD dependency.
+3. Introduce a LoRa-only HybridRouter skeleton with no behavior regression.
+4. Add bounded multipath route sets and deterministic failover.
+5. Harden reliability, deduplication and store-and-forward behavior.
+6. Add ESP-NOW as an optional `TransportAdapter` and validate hybrid forwarding.
+7. Run simulator, host and real multi-node/battery/power-loss acceptance tests.
+8. Only then evaluate NAN, RF-assist, TDMA/regional routing and external backscatter.
 
-See `docs/` for the architecture, upstream audit, license plan, risk register, roadmap and pre-build gates.
+## Documentation
+
+Start at [`docs/README.md`](docs/README.md). It indexes the architecture, API contracts, routing specification, no-SD requirements, resource budget, foundation runbooks, risk reviews and ADRs.
+
+The intended future code layout is defined in [`docs/REPOSITORY_LAYOUT.md`](docs/REPOSITORY_LAYOUT.md). Production source remains locked by CI until the baseline evidence gate passes.
