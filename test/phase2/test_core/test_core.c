@@ -79,14 +79,31 @@ static void test_boundary_write_failure_issues_nothing(void) {
 }
 
 static void test_init_fails_closed(void) {
+    mog_packet_id_generator_t gen = {
+        .next = 123,
+        .durable_ceiling = 456,
+        .reserve = 8,
+        .ready = true,
+    };
+    mog_packet_id_t out = 777;
+
     mock_store_t read_fail = {.fail_read = 1};
-    mog_packet_id_generator_t gen;
     assert(mog_packet_id_generator_init(&gen, 8, mock_read, mock_write, &read_fail) ==
            MOG_CORE_ERR_STORE);
+    assert(!gen.ready);
+    assert(gen.next == 0);
+    assert(mog_packet_id_next(&gen, &out) == MOG_CORE_ERR_STATE);
+    assert(out == 777);
 
+    gen.ready = true;
+    gen.next = 999;
     mock_store_t write_fail = {.fail_write = 1};
     assert(mog_packet_id_generator_init(&gen, 8, mock_read, mock_write, &write_fail) ==
            MOG_CORE_ERR_STORE);
+    assert(!gen.ready);
+    assert(gen.next == 0);
+    assert(mog_packet_id_next(&gen, &out) == MOG_CORE_ERR_STATE);
+    assert(out == 777);
 }
 
 static void test_message_key_is_origin_qualified(void) {
