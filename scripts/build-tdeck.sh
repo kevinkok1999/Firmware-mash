@@ -30,7 +30,7 @@ actual_idf_pin="$(tr -d '\r\n' < "${foundation_dir}/.esp-idf-version")"
 
 # This is the decisive step: a target build is not Phase-1 evidence unless it
 # contains the reviewed Firmware-mash overlay on the exact approved foundation.
-bash "${repo_root}/scripts/apply-foundation-overlay.sh" "$foundation_dir"
+bash "${repo_root}/scripts/apply-overlay.sh" "$foundation_dir"
 
 build_native() {
   local version
