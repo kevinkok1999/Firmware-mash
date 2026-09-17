@@ -8,6 +8,11 @@ These are architecture contracts, not final source headers. Exact names/types ma
 typedef uint32_t mog_node_id_t;
 typedef uint64_t mog_packet_id_t;
 
+typedef struct {
+    mog_node_id_t origin;
+    mog_packet_id_t packet_id;
+} mog_message_key_t;
+
 typedef enum {
     MOG_LINK_LORA = 1,
     MOG_LINK_ESPNOW,
@@ -18,6 +23,8 @@ typedef enum {
 ```
 
 A logical packet gets one `mog_packet_id_t` before route selection. Transport-specific sequence/frame IDs never replace it. Conversation identity is separate from transport and remains stable across path changes.
+
+The globally meaningful logical message identity is the pair `(origin, packet_id)`, represented by `mog_message_key_t`. A PacketId is non-repeating for one origin identity; it is not assumed globally unique across unrelated origin identities. Dedup, delivery ACK correlation, custody and reboot-safe presentation therefore key on `mog_message_key_t`, never on a naked PacketId from an unqualified remote source.
 
 ## Transport capability flags
 
@@ -226,6 +233,8 @@ ENERGY_SOURCE_CHANGED
 TX_RESERVE_READY
 ```
 
+Events that refer to a logical user message carry `mog_message_key_t` (or an equivalent origin-qualified identity), not an unqualified remote PacketId.
+
 `LINK_RECOVERED`, `NEIGHBOR_UP`, `ROUTE_DISCOVERED`, `ROUTE_AVAILABLE`, `TRANSPORT_RECOVERED` and `GATEWAY_AVAILABLE` may make a durable `WAITING_ROUTE` message immediately retry-eligible. `TX_RESERVE_READY` may make an energy-deferred attempt eligible for reevaluation when compatible hardware exists. None of these events bypass ReliabilityManager, AirtimeManager or bounded anti-storm backoff/jitter.
 
 All events use a bounded queue/pool. Overflow increments an observable health counter and follows a documented drop/backpressure policy.
@@ -396,7 +405,7 @@ Energy-driven deferral or successful IP socket write must not be represented as 
 
 ## Dedup
 
-`seen(PacketId)` is evaluated before application delivery. A duplicate arriving by another path is not shown twice, but may contribute link/path evidence. The destination may re-ACK a duplicate when required to complete sender-side delivery state.
+`seen(mog_message_key_t)` is evaluated before application delivery. A duplicate arriving by another path is not shown twice, but may contribute link/path evidence. The destination may re-ACK a duplicate when required to complete sender-side delivery state.
 
 ## MessageStore
 
