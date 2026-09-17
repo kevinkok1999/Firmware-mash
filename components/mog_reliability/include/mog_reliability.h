@@ -46,9 +46,13 @@ int mog_reliability_note_e2e_ack(mog_reliability_t *rel,
                                  mog_message_key_t key);
 int mog_reliability_defer_no_route(mog_reliability_t *rel,
                                    mog_message_key_t key);
+int mog_reliability_note_route_available(mog_reliability_t *rel,
+                                         mog_message_key_t key);
 int mog_reliability_due(const mog_reliability_t *rel, uint32_t now_ms,
                         mog_message_key_t *out, size_t out_capacity,
                         size_t *out_count);
+int mog_reliability_sweep_exhausted(mog_reliability_t *rel, uint32_t now_ms,
+                                    size_t *failed_count);
 const mog_reliability_entry_t *mog_reliability_find(const mog_reliability_t *rel,
                                                      mog_message_key_t key);
 
