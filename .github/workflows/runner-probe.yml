@@ -6,6 +6,9 @@ on:
     branches: [develop]
     paths:
       - '.github/workflows/runner-probe.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/runner-probe.yml'
 
 permissions:
   contents: read
