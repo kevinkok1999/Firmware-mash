@@ -8,63 +8,33 @@ release_package_status=CONTRACT_READY_IMPLEMENTATION_PENDING
 
 ## Purpose
 
-This is the final pre-code contradiction audit after the three preparation phases. `READY_FOR_CODING` means the architecture, ownership rules, dependency order and evidence model are internally coherent. It does **not** override the baseline gate: production source still may not start until `docs/BASELINE_APPROVED` exists with genuine PASS evidence.
+Final pre-code contradiction audit after the three preparation phases. `READY_FOR_CODING` means architecture/ownership/dependency/evidence rules are internally coherent. It does **not** override the baseline gate: production source still may not start until `docs/BASELINE_APPROVED` exists with genuine PASS evidence.
 
 ## Phase 1 — architecture completeness
 
-### Findings resolved
+Resolved:
 
-1. **Sender delayed delivery versus true store-carry-forward was ambiguous.**
-   - Resolved by `STORE_CARRY_CUSTODY_CONTRACT.md` and ADR 0008.
-   - Custody acceptance requires durable relay commit.
-   - Custody acceptance never equals destination delivery.
-   - Same PacketId, protected envelope and chat survive custody transfer.
-   - Initial ownership/replication is bounded; epidemic replication is forbidden.
+1. Sender delayed delivery vs true store-carry-forward ambiguity -> `STORE_CARRY_CUSTODY_CONTRACT.md` + ADR 0008.
+2. One-click/flasher outcome lacked normative contract -> `FLASHER_RELEASE_CONTRACT.md`.
+3. No single future coding entrypoint -> `CODING_TRIGGER_CONTRACT.md`.
+4. Packet delivery and MessageStore explicitly separate custody acceptance from destination delivery.
 
-2. **One-click/flasher outcome was described but not normatively specified.**
-   - Resolved by `FLASHER_RELEASE_CONTRACT.md`.
-   - Exact offsets/partition data come from real build output.
-   - Manifest, SHA-256, flasher descriptor and recovery path are mandatory release outputs.
-   - STABLE publication fails closed when evidence is incomplete.
+Phase 1 verdict: **PASS**.
 
-3. **There was no single authoritative future coding trigger.**
-   - Resolved by `CODING_TRIGGER_CONTRACT.md`.
-   - The trigger checks baseline, controller status and source-of-truth contracts before production source creation.
+## Phase 2 — order, traceability and automation
 
-### Phase 1 verdict
+Resolved:
 
-PASS. No unresolved ownership or delivery-truth contradiction remains.
+1. Custody dependency-order conflict -> custody core now follows proven Reliability/MessageStore/Multipath and precedes optional ESP-NOW/IP complexity.
+2. Added CUS-001..010, TRIG-001..003 and RELSE-001..008 traceability.
+3. Added `CFG-CUSTODY-BETA` + custody-OFF stable regression.
+4. Prebuild now covers gateway/custody/release safety.
+5. Preflight requires custody, coding-trigger, flasher and ADR 0008 contracts.
+6. Added fail-closed manual `coding-readiness` workflow.
+7. Added fail-closed future `release-package` workflow scaffold.
+8. Root README and docs index now point to the same final architecture/order.
 
-## Phase 2 — implementation order, test traceability and automation
-
-### Findings resolved
-
-1. **Custody implementation order conflicted between roadmap and initial trigger draft.**
-   - Resolved: custody core is now built after proven Reliability/MessageStore/Multipath and before optional ESP-NOW/IP complexity.
-   - This isolates ownership/durability bugs from transport bugs.
-
-2. **New custody/release/trigger requirements were not fully mapped to tests.**
-   - Resolved by CUS-001..010, TRIG-001..003 and RELSE-001..008 in `TEST_TRACEABILITY.md`.
-
-3. **Build isolation for custody did not exist.**
-   - Resolved by `CFG-CUSTODY-BETA` plus custody-OFF stable regression.
-
-4. **Prebuild checklist lacked IP/gateway/custody/release safety gates.**
-   - Resolved in `PREBUILD_CHECKLIST.md`.
-
-5. **CI did not require the new contracts.**
-   - Resolved: preflight requires custody, coding-trigger, flasher and ADR 0008 documents.
-
-6. **No one-click readiness/release workflow scaffolds existed.**
-   - Added `.github/workflows/coding-readiness.yml`.
-   - Added `.github/workflows/release-package.yml`.
-   - Both fail closed when their prerequisites are absent.
-   - `coding-readiness` validates readiness; a coding agent performs the implementation.
-   - `release-package` eventually calls `scripts/release-package.sh`, which must be implemented during the coding/release phase from real build metadata.
-
-### Phase 2 verdict
-
-PASS. Requirements, build configurations, test IDs and workflow gates are aligned.
+Phase 2 verdict: **PASS**.
 
 ## Phase 3 — final red-team / release audit
 
@@ -74,75 +44,71 @@ PASS:
 
 - exactly one `HybridRouter` routing authority;
 - exactly one `EnergyManager` power-policy authority;
-- one logical PacketId across LoRa, ESP-NOW, IP, retries, reboot and custody;
+- one PacketId across LoRa, ESP-NOW, IP, retries, reboot and custody;
 - one contact remains one chat regardless of path;
-- link/socket/gateway/custody success is never destination Delivered;
+- link/socket/gateway/custody success is never destination `Delivered`;
 - MessageStore is internal-flash/no-SD core storage;
 - custody durable commit precedes responsibility acceptance;
-- all LoRa TX remains behind AirtimeManager;
-- Wi-Fi/cellular are NetifProvider bearers, not separate routers/chats;
-- GatewayManager/Discovery provide reachability evidence, not route ownership;
+- all LoRa TX stays behind AirtimeManager;
+- Wi-Fi/cellular are bearer providers, not separate routers/chats;
+- GatewayManager/Discovery supplies reachability evidence, not route ownership;
 - no single mandatory cloud service owns conversation history;
 - RF harvesting is energy-only and optional hardware;
-- optional transports/providers/custody can be removed while stable LoRa sender-delayed-delivery remains;
+- optional transports/providers/custody can be removed while stable LoRa sender delayed delivery remains;
 - no custom cryptographic primitives;
 - normal UI hides engineering internals;
 - release layout is generated/measured, never guessed.
 
 ### Failure isolation rechecked
 
-PASS by contract; implementation evidence is still future work:
+Contract-level PASS; implementation evidence remains future work:
 
 - ESP-NOW failure -> LoRa remains;
 - Internet/gateway failure -> radio or WAITING_ROUTE remains;
 - cellular failure -> other paths remain;
-- harvester absence/failure -> normal battery operation remains;
-- custody disabled/rejected -> sender retains ordinary delayed delivery;
-- storage pressure -> deterministic reject/eviction policy, never silent false acceptance;
-- duplicate mixed paths -> dedup/exactly-once app presentation;
-- bootstrap loss -> existing peers/local mesh remain by design;
-- bad release evidence -> STABLE package creation rejected.
+- harvester absence -> normal battery operation;
+- custody disabled/rejected -> sender retains delayed delivery;
+- storage pressure -> deterministic reject/eviction, never false acceptance;
+- duplicate mixed paths -> dedup/exactly-once presentation;
+- bootstrap loss -> local mesh/existing peers remain by design;
+- missing release evidence -> STABLE packaging rejected.
 
-## Current blockers that are intentionally NOT resolved by design guessing
+## Current blockers intentionally not guessed away
 
-These are measurement/infrastructure gates, not architecture defects.
+### B1 — baseline marker absent
 
-### B1 — baseline approval marker absent
-
-Current state: `docs/BASELINE_APPROVED` does not exist on `develop`.
+`docs/BASELINE_APPROVED` is currently absent on `develop`.
 
 Required before production source:
 
-- pinned foundation build evidence;
+- pinned foundation build PASS;
 - host/unit PASS;
 - simulator PASS;
-- license review PASS;
-- no-SD source/dependency review PASS;
-- human-readable resource/build report.
+- license PASS;
+- no-SD dependency review PASS;
+- human-readable measured resource/build report.
 
-The project already has strong upstream evidence for the pinned Bramble foundation, but the local gate remains deliberately fail-closed until the approved evidence path is recorded.
+### B2 — GitHub Actions runner not executing jobs
 
-### B2 — GitHub Actions hosted runner not executing jobs
+Latest observed project preflight remained queued before any workflow step executed. This is CI/infrastructure state, not a firmware/compiler failure.
 
-Latest observed project preflight remained queued before any workflow step executed. This is classified as CI/infrastructure state, not a firmware/compiler failure.
-
-Do not mark local CI PASS until a runner actually executes the workflow or equivalent reproducible evidence is captured by an approved alternative path.
+Do not call local CI PASS until a runner actually executes or equivalent approved reproducible evidence is captured.
 
 ### B3 — exact resource/partition values
 
 Still measurement-dependent:
 
 - final app binary size;
-- RAM/PSRAM high-water values;
-- final packet/event/route/peer/gateway/custody pool capacities;
+- RAM/PSRAM high-water;
+- packet/event/route/peer/gateway/custody capacities;
 - final 16 MB partition layout;
-- final MessageStore backend;
-- exact merged-image/flash offsets;
-- A/B OTA feasibility after real layout measurement.
+- MessageStore backend;
+- exact merged-image offsets;
+- A/B OTA feasibility.
 
 ### B4 — hardware promotion evidence
 
-Still legitimately future:
+Still future/evidence-gated:
 
 - real no-SD cold boot/message recovery;
 - LoRa field behavior;
@@ -150,20 +116,14 @@ Still legitimately future:
 - real Wi-Fi/gateway federation;
 - custody carry/reboot/delivery;
 - selected cellular modem/eSIM/operator combination;
-- RF-harvester power/RF coexistence;
+- RF-harvest power/RF coexistence;
 - final one-click flash + recovery acceptance.
-
-These cannot be made “100%” by documentation alone and must remain evidence-gated.
 
 ## Authoritative coding order
 
-Use `CODING_TRIGGER_CONTRACT.md`, `ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` and `IMPLEMENTATION_BLUEPRINT.md`.
-
-Condensed order:
-
 ```text
 baseline approval
--> foundation import/reproduction
+-> foundation integration
 -> MessageStore
 -> packet/events/core
 -> EnergyManager
@@ -182,48 +142,43 @@ baseline approval
 -> release package/flasher
 ```
 
-After every major layer: compile -> mapped tests -> impacted integration tests -> CFG-LORA-STABLE regression -> resource review -> controller pass.
+After each layer: compile -> mapped tests -> impacted integration tests -> CFG-LORA-STABLE regression -> resource review -> controller pass.
 
 ## One-click coding path
 
-The intended preparation outcome is now explicit:
-
 1. obtain genuine baseline evidence and create valid `docs/BASELINE_APPROVED`;
-2. run the `coding-readiness` manual workflow or equivalent trigger check;
-3. when green, instruct the coding agent to execute `CODING_TRIGGER_CONTRACT.md`;
-4. coding agent continues through the one-shot runbook without reopening settled architecture;
-5. ordinary failures are repaired in-loop;
-6. only proven hardware/toolchain/access blockers stop progression.
+2. run `coding-readiness` workflow or equivalent trigger check;
+3. when green, instruct coding agent to execute `CODING_TRIGGER_CONTRACT.md`;
+4. agent runs one-shot implementation, repairing ordinary failures in-loop;
+5. only proven hardware/toolchain/access blockers stop progression.
 
-The workflow itself validates readiness; it does not falsely claim GitHub Actions can autonomously write the project without an attached coding agent.
+The workflow validates readiness; it does not pretend GitHub Actions writes the firmware by itself without a coding agent.
 
 ## One-click flasher/release path
 
 After implementation/evidence:
 
-1. `release-package` workflow is triggered for board/region/tier;
-2. it calls the future real `scripts/release-package.sh`;
-3. build/test/evidence gates run;
-4. package produces real binary artifact(s), `release-manifest.json`, `SHA256SUMS`, `flasher-manifest.json` and recovery instructions;
-5. a supported flasher uses generated layout metadata;
-6. normal user presses Flash and completes only normal onboarding.
+1. trigger `release-package` for board/region/tier;
+2. future real `scripts/release-package.sh` builds exact package;
+3. required build/test/evidence gates run;
+4. output contains binary artifact(s), `release-manifest.json`, `SHA256SUMS`, `flasher-manifest.json`, recovery instructions;
+5. supported flasher uses generated layout metadata;
+6. normal user performs only Flash + onboarding.
 
-The release workflow currently fails intentionally because production source/release script/evidence do not yet exist. That is correct pre-code behavior.
+The release workflow currently fails intentionally because production source/release script/evidence do not exist yet. That is correct pre-code behavior.
 
 ## Final verdict
 
 ### Architecture
 
-**READY FOR CODING.** No unresolved architecture contradiction found in this final pass.
+**READY FOR CODING — 0 unresolved architecture contradictions.**
 
 ### Production coding right now
 
-**BLOCKED BY BASELINE EVIDENCE GATE.** This is intentional and protects the project from building thousands of lines of custom firmware on an unrecorded local baseline.
+**BLOCKED BY BASELINE EVIDENCE GATE.** This is intentional.
 
 ### Final flasher right now
 
-**NOT YET A REAL FIRMWARE ARTIFACT.** The full release/flasher contract and one-click workflow scaffold are prepared, but the real image can only be generated after the firmware is implemented, compiled and validated.
+**CONTRACT/WORKFLOW SCAFFOLD READY; REAL FIRMWARE ARTIFACT NOT YET BUILT.**
 
-### Quality target
-
-The preparation is now designed so the next coding pass is deterministic, test-traceable and fail-closed. “100% correct” remains a release evidence goal, not a claim that can be made before actual compilation and hardware validation.
+“100% correct” remains a release evidence target, not a claim made before compilation and real hardware validation.
