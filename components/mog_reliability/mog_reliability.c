@@ -22,6 +22,25 @@ static int transition(mog_reliability_entry_t *e, mog_message_state_t to)
     return MOG_REL_OK;
 }
 
+static mog_message_state_t restored_runtime_state(mog_message_state_t durable)
+{
+    switch (durable) {
+    case MOG_MSG_READY:
+    case MOG_MSG_WAITING_ROUTE:
+    case MOG_MSG_DEFERRED:
+    case MOG_MSG_DELIVERED:
+    case MOG_MSG_EXPIRED:
+    case MOG_MSG_FAILED_PERMANENT:
+        return durable;
+    case MOG_MSG_CREATED:
+    case MOG_MSG_SENDING:
+    case MOG_MSG_WAITING_ACK:
+        return MOG_MSG_READY;
+    default:
+        return MOG_MSG_FAILED_PERMANENT;
+    }
+}
+
 void mog_reliability_init(mog_reliability_t *rel)
 {
     if (rel != NULL) memset(rel, 0, sizeof(*rel));
@@ -56,6 +75,47 @@ int mog_reliability_track(mog_reliability_t *rel, mog_message_key_t key,
             e->state = MOG_MSG_READY;
             e->max_attempts = max_attempts;
             e->retry_base_ms = retry_base_ms;
+            e->in_use = true;
+            rel->count++;
+            return MOG_REL_OK;
+        }
+    }
+    return MOG_REL_ERR_FULL;
+}
+
+int mog_reliability_restore(mog_reliability_t *rel, mog_message_key_t key,
+                            mog_message_state_t durable_state,
+                            uint8_t attempts, uint8_t max_attempts,
+                            uint32_t retry_base_ms)
+{
+    size_t i;
+    mog_message_state_t state;
+    if (rel == NULL || !mog_message_key_is_valid(key) || max_attempts == 0u ||
+        attempts > max_attempts || retry_base_ms == 0u ||
+        retry_base_ms > (uint32_t)INT32_MAX ||
+        durable_state < MOG_MSG_CREATED || durable_state > MOG_MSG_FAILED_PERMANENT)
+        return MOG_REL_ERR_ARG;
+    if (find_mut(rel, key) != NULL) return MOG_REL_ERR_STATE;
+    if (rel->count >= MOG_RELIABILITY_MAX_TRACKED) return MOG_REL_ERR_FULL;
+
+    state = restored_runtime_state(durable_state);
+    /* A non-terminal message that already consumed its complete retry budget
+     * cannot be made sendable merely by rebooting. The durable record remains
+     * authoritative; runtime converges fail-closed until that terminal result
+     * is committed back by the owner. */
+    if (!mog_message_state_is_terminal(state) && attempts >= max_attempts)
+        state = MOG_MSG_FAILED_PERMANENT;
+
+    for (i = 0; i < MOG_RELIABILITY_MAX_TRACKED; ++i) {
+        mog_reliability_entry_t *e = &rel->entries[i];
+        if (!e->in_use) {
+            memset(e, 0, sizeof(*e));
+            e->key = key;
+            e->state = state;
+            e->attempts = attempts;
+            e->max_attempts = max_attempts;
+            e->retry_base_ms = retry_base_ms;
+            e->next_retry_ms = 0u;
             e->in_use = true;
             rel->count++;
             return MOG_REL_OK;
