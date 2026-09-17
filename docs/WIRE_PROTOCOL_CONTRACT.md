@@ -23,7 +23,7 @@ Physical/link framing
 
 Transport framing may differ by link. The logical message identity and end-to-end protected content remain transport-independent.
 
-## PacketId
+## Logical message identity
 
 One stable logical PacketId is assigned before route selection and survives:
 
@@ -33,9 +33,11 @@ One stable logical PacketId is assigned before route selection and survives:
 - fragmentation/reassembly;
 - multipath/failover;
 - durable WAITING_ROUTE storage;
+- gateway/IP traversal;
+- custody/store-carry-forward;
 - reboot recovery.
 
-A transport-local sequence/frame ID may exist for link mechanics but never becomes the application identity.
+PacketId is non-repeating within one origin identity. The network-wide logical message key is `(origin identity, PacketId)`. Wire/control structures that need globally meaningful ACK/dedup/custody identity must carry or unambiguously bind both parts (or a foundation-compatible equivalent). A transport-local sequence/frame ID may exist for link mechanics but never becomes the application identity.
 
 ## Versioning
 
@@ -67,7 +69,7 @@ Fragmentation/reassembly ownership must remain single and explicit. Do not indep
 
 Rules:
 
-- preserve the stable PacketId across fragments;
+- preserve the stable origin-qualified logical message key across fragments;
 - fragment count/size bounded;
 - incomplete assemblies expire;
 - duplicate fragments are tolerated/deduplicated;
@@ -78,7 +80,7 @@ Rules:
 
 Link-level ACK/result and end-to-end delivery ACK remain separate.
 
-A destination ACK references the stable logical identity required by ReliabilityManager. Loss of the ACK may cause retransmission, but destination dedup prevents a second UI message.
+A destination ACK references the origin-qualified logical identity required by ReliabilityManager. Loss of the ACK may cause retransmission, but destination dedup prevents a second UI message.
 
 ## ESP-NOW framing
 
@@ -89,6 +91,8 @@ The adapter may add bounded local framing/sequence information required for peer
 ## LoRa framing
 
 The initial LoRa path should remain as close as possible to the pinned foundation's proven on-air framing. HybridRouter insertion must not force an incompatible LoRa protocol change during the first seam/refactor phase.
+
+Where the pinned Bramble wire header still uses its existing 32-bit packet ID, Firmware-mash must not silently reinterpret that field as the complete new logical identity. A compatibility seam must bind the upstream wire packet to the Firmware-mash origin-qualified message key without breaking legacy LoRa framing. Any on-air extension requires explicit versioning/interoperability evidence.
 
 ## Store-and-forward
 
@@ -103,7 +107,8 @@ For each wire-format-affecting change, test at minimum:
 - same-version direct communication;
 - fragmentation/reassembly if applicable;
 - retry with lost ACK;
-- route/transport change preserving PacketId;
+- route/transport change preserving logical message identity;
+- same numeric PacketId from two different origins remains distinct;
 - malformed/unknown version rejection;
 - mixed old/new version behavior when backward compatibility is claimed.
 
