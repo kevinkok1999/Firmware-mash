@@ -4,6 +4,41 @@ static size_t slot_of(const mog_event_queue_t *queue, size_t logical_index) {
     return (queue->head + logical_index) % queue->capacity;
 }
 
+mog_event_class_t mog_event_class_for_type(mog_event_type_t type) {
+    switch (type) {
+        case MOG_EVENT_RF_METRICS_CHANGED:
+        case MOG_EVENT_ENERGY_SOURCE_CHANGED:
+            return MOG_EVENT_CLASS_TELEMETRY;
+
+        case MOG_EVENT_LINK_RX:
+        case MOG_EVENT_LINK_TX_RESULT:
+        case MOG_EVENT_LINK_RECOVERED:
+        case MOG_EVENT_NEIGHBOR_UP:
+        case MOG_EVENT_NEIGHBOR_DOWN:
+        case MOG_EVENT_ROUTE_DISCOVERED:
+        case MOG_EVENT_ROUTE_AVAILABLE:
+        case MOG_EVENT_ROUTE_FAILED:
+        case MOG_EVENT_TRANSPORT_RECOVERED:
+        case MOG_EVENT_IP_BEARER_UP:
+        case MOG_EVENT_IP_BEARER_DOWN:
+        case MOG_EVENT_GATEWAY_DISCOVERED:
+        case MOG_EVENT_GATEWAY_AVAILABLE:
+        case MOG_EVENT_GATEWAY_LOST:
+        case MOG_EVENT_FEDERATION_SESSION_UP:
+        case MOG_EVENT_FEDERATION_SESSION_DOWN:
+        case MOG_EVENT_DELIVERY_ACK:
+        case MOG_EVENT_DELIVERY_TIMEOUT:
+        case MOG_EVENT_STORE_RETRY:
+        case MOG_EVENT_ENERGY_STATE_CHANGED:
+        case MOG_EVENT_TX_RESERVE_READY:
+            return MOG_EVENT_CLASS_CONTROL;
+    }
+
+    /* Unknown enum values fail toward the safer class: never silently shed an
+     * event we do not understand as low-value telemetry. */
+    return MOG_EVENT_CLASS_CONTROL;
+}
+
 int mog_event_queue_init(mog_event_queue_t *queue,
                          mog_event_t *storage,
                          size_t capacity) {
@@ -35,7 +70,8 @@ static int append_event(mog_event_queue_t *queue, const mog_event_t *event) {
 static int evict_oldest_telemetry(mog_event_queue_t *queue) {
     size_t victim = queue->count;
     for (size_t i = 0; i < queue->count; ++i) {
-        if (queue->storage[slot_of(queue, i)].event_class == MOG_EVENT_CLASS_TELEMETRY) {
+        if (mog_event_class_for_type(queue->storage[slot_of(queue, i)].type) ==
+            MOG_EVENT_CLASS_TELEMETRY) {
             victim = i;
             break;
         }
@@ -56,16 +92,12 @@ int mog_event_queue_push(mog_event_queue_t *queue, const mog_event_t *event) {
     if (!queue || !event || !queue->storage || queue->capacity == 0) {
         return MOG_EVENTS_ERR_ARG;
     }
-    if (event->event_class != MOG_EVENT_CLASS_TELEMETRY &&
-        event->event_class != MOG_EVENT_CLASS_CONTROL) {
-        return MOG_EVENTS_ERR_ARG;
-    }
 
     if (queue->count < queue->capacity) {
         return append_event(queue, event);
     }
 
-    if (event->event_class == MOG_EVENT_CLASS_TELEMETRY) {
+    if (mog_event_class_for_type(event->type) == MOG_EVENT_CLASS_TELEMETRY) {
         queue->telemetry_dropped++;
         return MOG_EVENTS_DROPPED_TELEMETRY;
     }
