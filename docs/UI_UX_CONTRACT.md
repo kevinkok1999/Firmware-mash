@@ -4,7 +4,7 @@
 
 Firmware-mash must feel like holding a small familiar mobile phone, not like operating a radio terminal or developer dashboard.
 
-The networking stack may be complex internally, but normal users interact with a simple phone-style interface. LoRa, ESP-NOW Normal/LR, hops, route scores, retries, peer caches and airtime policy remain automatic and mostly invisible.
+The networking and energy stack may be complex internally, but normal users interact with a simple phone-style interface. LoRa, ESP-NOW Normal/LR, hops, route scores, retries, peer caches, airtime policy, power-policy thresholds and harvesting electronics remain automatic and mostly invisible.
 
 ## Overall shell
 
@@ -47,7 +47,7 @@ Optional secondary tile later:
 🗺 Map / location
 ```
 
-Do not expose separate apps for LoRa, ESP-NOW or routing. Those are implementation details.
+Do not expose separate apps for LoRa, ESP-NOW, routing or RF harvesting. Those are implementation details.
 
 The Home screen may also show compact widgets:
 
@@ -55,7 +55,8 @@ The Home screen may also show compact widgets:
 - queued-message count only when non-zero;
 - battery;
 - simple network state;
-- time/date.
+- time/date;
+- compact energy-saving indicator only when the device is actively conserving power.
 
 ## Status bar
 
@@ -75,7 +76,15 @@ Network icon semantics are simple:
 - offline: messages will be queued;
 - warning: radio/storage degraded.
 
-Do not show raw RSSI/SNR permanently in the status bar.
+Energy semantics remain familiar:
+
+- normal battery percentage/icon;
+- charging/external-power icon when known;
+- energy-saving indicator in CONSERVE/CRITICAL as appropriate;
+- survival indication only when the device intentionally enters the most restrictive power state;
+- `Energy assist` may be shown only when compatible, detected harvesting hardware reports credible input.
+
+Do not show raw RSSI/SNR, rectifier voltage, harvested microwatts or supercap voltage permanently in the status bar.
 
 ## Messages app
 
@@ -120,7 +129,9 @@ Expired / Could not deliver
 
 A queued message remains visible in the correct conversation and is automatically retried when usable connectivity returns. The user never needs to press Send again.
 
-## Automatic networking UX
+Energy policy may delay background work or a transmission attempt, but the user-visible delivery state remains truthful. An energy deferral is never displayed as Delivered.
+
+## Automatic networking and energy UX
 
 Normal users do not choose:
 
@@ -131,7 +142,10 @@ Normal users do not choose:
 - number of hops;
 - route;
 - retry count;
-- routing weights.
+- routing weights;
+- EnergyManager thresholds;
+- MPPT/rectifier settings;
+- energy-reservoir/supercap thresholds.
 
 The firmware chooses automatically.
 
@@ -200,7 +214,12 @@ Behind an explicit Advanced action only:
 - airtime/congestion;
 - queue/pool pressure;
 - storage health;
-- RAM/PSRAM high-water marks.
+- RAM/PSRAM high-water marks;
+- EnergyManager state;
+- external-power presence;
+- energy-policy deferral counters;
+- optional harvesting-provider availability/confidence;
+- raw harvest power/reservoir voltage only when actual compatible hardware exposes measured data.
 
 Advanced diagnostics never block ordinary messaging.
 
@@ -215,11 +234,14 @@ Notifications
 Contacts / identity
 Radio region
 Storage
+Battery & power
 Firmware / About
 Advanced
 ```
 
-First-level settings use plain language. Developer/radio tuning remains inside Advanced and may be read-only in STABLE builds where changing it would undermine validated defaults or regional compliance.
+First-level settings use plain language. Developer/radio/power-electronics tuning remains inside Advanced and may be read-only in STABLE builds where changing it would undermine validated defaults, battery safety or regional compliance.
+
+`Battery & power` may expose simple user choices such as display timeout or an allowed battery-saver preference if validated. It must not expose raw PMIC/harvester engineering controls to normal users.
 
 ## First-run experience
 
@@ -234,13 +256,15 @@ Recommended flow:
 5. show a short success screen;
 6. enter Home.
 
-No routing weights, modem engineering, ESP-NOW mode or retry values appear in normal onboarding.
+No routing weights, modem engineering, ESP-NOW mode, retry values or harvesting/power-electronics settings appear in normal onboarding.
 
 ## Notifications
 
 When the T-Deck receives a message while another screen is active, provide a familiar compact notification banner/icon where the hardware/UI stack allows it.
 
 Queued messages should not generate repeated noisy notifications while retrying. Notify on meaningful state changes such as delivered, failed permanently, storage warning or received message.
+
+Energy state changes should normally be quiet. Notify only when meaningful to the user, such as entry into a severe survival/critical condition or a hardware/power fault that affects operation.
 
 ## Visual hierarchy
 
@@ -265,7 +289,7 @@ Rules:
 
 ## Responsiveness
 
-UI must never block on radio discovery, route search, flash compaction or delivery ACK.
+UI must never block on radio discovery, route search, flash compaction, delivery ACK, EnergyManager sampling or harvester-provider I/O.
 
 The UI consumes snapshots/events and immediately reflects state. Long-running operations show a visible status instead of freezing.
 
@@ -293,8 +317,10 @@ message remains in conversation
 -> Delivered
 ```
 
-No second Send press, transport selection or route configuration is required.
+No second Send press, transport selection, route configuration or energy-engineering configuration is required.
 
 ## Design constraint
 
 The finished experience should be recognizable to someone familiar with a normal smartphone messaging app within seconds, while still exposing an optional powerful Advanced diagnostics layer for expert users.
+
+Ambient RF Energy Assist must feel like an invisible optional efficiency feature, not like a second operating mode the user has to understand.
