@@ -162,3 +162,15 @@ int mog_reliability_sweep_exhausted(mog_reliability_t *rel, uint32_t now_ms,
     *failed_count = n;
     return MOG_REL_OK;
 }
+
+int mog_reliability_forget_terminal(mog_reliability_t *rel,
+                                    mog_message_key_t key)
+{
+    mog_reliability_entry_t *e = find_mut(rel, key);
+    if (e == NULL) return MOG_REL_ERR_NOT_FOUND;
+    if (!mog_message_state_is_terminal(e->state)) return MOG_REL_ERR_STATE;
+    memset(e, 0, sizeof(*e));
+    if (rel->count == 0u) return MOG_REL_ERR_STATE;
+    rel->count--;
+    return MOG_REL_OK;
+}
