@@ -36,6 +36,8 @@ jobs:
             docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md
             docs/ENERGY_MANAGEMENT_CONTRACT.md
             docs/IP_GATEWAY_FEDERATION_CONTRACT.md
+            docs/IP_GATEWAY_IMPLEMENTATION_CHECKLIST.md
+            docs/GATEWAY_SECURITY_REQUIREMENTS.md
             docs/PACKET_DELIVERY_CONTRACT.md
             docs/WIRE_PROTOCOL_CONTRACT.md
             docs/MESSAGE_STORE_DESIGN.md
