@@ -26,6 +26,14 @@ Every stable requirement maps to at least one concrete test. This prevents imple
 | Identity/config isolated from queue churn | storage | corrupt/erase queue-domain test preserving identity/config |
 | All LoRa TX pass AirtimeManager | LoRa/airtime | code-path/static test + integration test |
 | Experimental transport removal does not break stable core | build config | CFG-LORA-STABLE build with all lab adapters OFF |
+| Stable logical envelope survives transport changes | packet/wire | LoRa->ESP-NOW retry/failover with same PacketId |
+| Unknown/malformed wire version rejected cleanly | packet/wire | parser negative tests |
+| Fragmentation cannot create duplicate app message | packet/reliability | fragment loss/duplicate/reassembly tests |
+| Smartphone-like Home/Messages/Contacts/Network/Settings flow | UI | navigation acceptance test on target/emulator |
+| Keyboard/trackball/touch core messaging usable without phone | UI | target input acceptance test |
+| UI remains responsive during route search/store I/O | UI/core | non-blocking interaction test under discovery + compaction |
+| Queued message visibly transitions to Delivered automatically | UI/reliability | delayed-delivery UI state test |
+| Normal UI requires no transport/route selection | UI/router | user-flow review + settings inspection |
 | User gets one-flash normal experience | release | release package + documented stable evidence |
 
 ## Test IDs
@@ -54,6 +62,14 @@ AIR-001 LoRa airtime gate enforcement
 REL-001 end-to-end ACK vs link success
 REL-002 retry bound/backoff
 DED-001 multipath duplicate exactly-once presentation
+WIR-001 same PacketId across transport change
+WIR-002 malformed/unknown version rejection
+WIR-003 fragmentation duplicate/reassembly
+UX-001 smartphone shell navigation
+UX-002 keyboard/trackball/touch message flow
+UX-003 queued -> automatic delivered visual state
+UX-004 UI responsive during network/storage work
+UX-005 no normal-user transport/route tuning requirement
 CFG-001 LoRa-only build
 CFG-002 hybrid build
 RELSE-001 one-flash release package
