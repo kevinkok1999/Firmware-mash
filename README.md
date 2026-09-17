@@ -55,7 +55,7 @@ bash scripts/phase-gate.sh 3
 
 Phase 2 and Phase 3 intentionally remain red until their actual source/tests exist. The release workflow also refuses to generate a user-facing package until Phase 3 passes.
 
-GitHub Actions runner scheduling is currently an external infrastructure limitation in this repository: recent jobs are being created but remain queued before step 1. A queued job is not treated as a compiler/test result.
+At the time of the latest project check, recent GitHub Actions jobs were being created but remained queued before step 1. That is treated as an external runner/scheduling limitation, not as a compiler/test result. Re-check Actions status before relying on this note.
 
 ## User experience target
 
