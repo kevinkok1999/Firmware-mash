@@ -12,13 +12,22 @@
 | Duplicate application delivery | Multipath can deliver the same packet twice | Stable PacketId + dedup window | Duplicate-path test shows one app delivery |
 | Volatile store-and-forward | A RAM-only queue loses undelivered messages on reboot/power loss | Dedicated bounded internal-flash MessageStore plus RAM index/cache | No-SD reboot/power-cut queue recovery test passes |
 | Store-and-forward pressure | Offline destinations can fill internal flash/RAM | TTL, bounded queue, priorities, deterministic eviction | Near-full store test has deterministic behavior |
-| Internal flash wear | Persisting high-churn route/RF metrics can shorten flash life | Persist only critical durable state; keep route/RF data in RAM/PSRAM; append/batch writes | Endurance/compaction counters measured and no per-metric persistent writes |
+| Internal flash wear | Persisting high-churn route/RF/energy metrics can shorten flash life | Persist only critical durable state; keep route/RF/energy data in RAM/PSRAM; append/batch writes | Endurance/compaction counters measured and no per-metric persistent writes |
 | Power loss during storage mutation | Handheld battery/reset can interrupt append, ACK-delete or compaction | Record integrity, recoverable journal/filesystem, isolated partitions | Repeated power-cut tests recover without boot loop or identity loss |
 | Accidental microSD dependency | Removable card can be absent/corrupt/removed | Core state must live in internal flash; SD optional only | Full stable acceptance suite passes with no card installed |
 | Partition exhaustion | Firmware growth can crowd out OTA/recovery or durable messages | Measure baseline image first; reserve explicit app/data/recovery growth margins | Partition budget reviewed on every release-size increase |
-| Battery drain from hybrid discovery | Always-on Wi-Fi/ESP-NOW/BLE/GNSS/display can make handheld impractical | Role-aware discovery windows, radio scheduler, display idle policy, measured power budgets | Real T-Deck battery/power profile documented for stable features |
+| Battery drain from hybrid discovery | Always-on Wi-Fi/ESP-NOW/BLE/GNSS/display can make handheld impractical | EnergyManager, role-aware discovery windows, radio scheduler, display idle policy, measured power budgets | Real T-Deck battery/power profile documented for stable features |
+| Energy-state flapping | Noisy ADC/source telemetry can rapidly change routing/power behavior | Hysteresis, confidence/staleness checks, bounded sampling | ENG-002/ENG-010 pass under noisy telemetry |
+| Energy policy causes false delivery | Deferring a TX must not look delivered | ReliabilityManager remains source of delivery truth | ENG-004 shows no Delivered state without E2E ACK |
+| Low-energy recovery storm | Returning power could wake many retries/discovery tasks at once | Bounded eligibility, jitter/backoff, AirtimeManager remains authoritative | ENG-003/ENG-008 stay bounded |
+| Invalid PMIC/harvest telemetry | Bad readings could trigger unsafe policy | Plausibility checks, confidence/staleness, last-safe state | ENG-005 passes; no crash/route corruption |
+| Optional harvester becomes dependency | Stock T-Deck could stop working without accessory | Provider isolation, CFG-LORA-STABLE with harvester OFF | ENG-006 + CFG-004 pass |
+| Ambient RF power overclaim | Ambient energy is environment-dependent and often very small | Treat as LAB energy assist only; measure actual hardware/environment | EHW-001 evidence before any power/runtime claim |
+| Harvester frontend degrades LoRa | Shared/loading RF path can detune/desensitize communications | Separate harvesting antenna default; shared antenna only as measured experiment | EHW-003/EHW-004 before promotion |
+| Brownout during energy-reserve TX | Stored energy may be insufficient under real TX load | Measured reservoir threshold/hysteresis; persistent message state before attempt | EHW-005 passes repeatedly |
+| Unsafe/unsupported battery charging integration | External PMIC/storage can violate board/battery assumptions | Use supported charging path/components; hardware review before connection | Hardware schematic/power review + thermal/power tests |
 | Security regression through bridges | New transports can accidentally bypass E2E protection | Encrypt above routing/transport, authenticate control where feasible | Security review and negative tests |
-| License contamination | GPL/custom-license code could change distribution obligations | Provenance log, MIT-first reuse, clean-room implementation where needed | Licensing review before merge/release |
+| License contamination | GPL/custom-license code could change distribution obligations | Provenance log, MIT-first reuse, clean-room/original implementation where needed | Licensing review before merge/release |
 | RF claims exceed evidence | Range is environment/hardware dependent | Record conditions and evidence tier; no universal range promises | Documentation review |
 | Backscatter/RIS overreach | Standard T-Deck cannot gain arbitrary ambient-RF features by firmware | Keep as disabled external-hardware/RF-assist modules | Real compatible hardware required |
 | Foundation churn upstream | Fast-moving upstream can break our assumptions | Pin exact commit; update intentionally through reviewed ADR/PR | Baseline reproducible from pin |
@@ -29,4 +38,6 @@
 
 A risk is not considered closed because code compiles. Each stable feature must have a test or operational control that directly addresses its failure mode.
 
-The stable product definition assumes **no microSD card**. Optional storage features cannot weaken or bypass the internal-flash durability requirements.
+The stable product definition assumes **no microSD card and no RF-harvesting accessory**. Optional storage or harvesting features cannot weaken or bypass the internal-flash durability, LoRa-backbone or delivery-truth requirements.
+
+Ambient RF Energy Assist cannot leave LAB based on simulator results alone. It requires actual harvested-power and communications-impact measurements.
