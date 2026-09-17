@@ -26,6 +26,8 @@ actual_commit="$(git -C "$foundation_dir" rev-parse HEAD)"
 # this makes the operation idempotent without becoming permissive.
 upstream_store="${foundation_dir}/components/msg_store/msg_store_spiffs.c"
 overlay_store="${repo_root}/overlay/bramble/components/msg_store/msg_store_spiffs.c"
+layout_guard_src="${repo_root}/overlay/bramble/components/msg_store/mog_msg_store_layout_guard.c"
+layout_guard_dst="${foundation_dir}/components/msg_store/mog_msg_store_layout_guard.c"
 expected_store_blob="dfdabad14de56d49e55d525d2e23e27eb3b1c7e5"
 actual_store_blob="$(git -C "$foundation_dir" hash-object components/msg_store/msg_store_spiffs.c)"
 overlay_store_blob="$(git hash-object "$overlay_store")"
@@ -35,6 +37,10 @@ if [[ "$actual_store_blob" != "$expected_store_blob" && \
   echo "BLOCKED: msg_store_spiffs.c is neither approved upstream nor approved overlay: ${actual_store_blob}" >&2
   exit 1
 fi
+[[ -s "$layout_guard_src" ]] || {
+  echo "BLOCKED: durable message layout guard missing" >&2
+  exit 1
+}
 
 # Overlay only Firmware-mash-owned components. The upstream checkout itself
 # remains detached at the pinned commit so provenance is always recoverable.
@@ -47,10 +53,12 @@ cp -R "${repo_root}/components/mog_message_store" \
 if [[ "$actual_store_blob" != "$overlay_store_blob" ]]; then
   cp "$overlay_store" "$upstream_store"
 fi
+cp "$layout_guard_src" "$layout_guard_dst"
 
-# Force ESP-IDF to compile/link the Firmware-mash durability component as part
-# of Bramble's real msg_store dependency graph. This is intentionally
-# idempotent and fails closed if the pinned upstream CMake shape changes.
+# Force ESP-IDF to compile/link the Firmware-mash durability component and the
+# layout guard as part of Bramble's real msg_store dependency graph. This is
+# intentionally idempotent and fails closed if the pinned upstream CMake shape
+# unexpectedly changes.
 cmake_file="${foundation_dir}/components/msg_store/CMakeLists.txt"
 python3 - "$cmake_file" <<'PY'
 from pathlib import Path
@@ -58,14 +66,23 @@ import sys
 
 path = Path(sys.argv[1])
 text = path.read_text()
-patched = 'PRIV_REQUIRES esp_timer spiffs mog_message_store'
-if patched in text:
+
+if '"mog_msg_store_layout_guard.c"' not in text:
+    old = 'SRCS "msg_store.c" "msg_store_spiffs.c"'
+    new = 'SRCS "msg_store.c" "msg_store_spiffs.c" "mog_msg_store_layout_guard.c"'
+    if old not in text:
+        raise SystemExit('BLOCKED: unexpected upstream msg_store SRCS shape')
+    text = text.replace(old, new, 1)
+
+patched_requires = 'PRIV_REQUIRES esp_timer spiffs mog_message_store'
+if patched_requires in text:
     pass
 elif 'PRIV_REQUIRES esp_timer spiffs' in text:
-    text = text.replace('PRIV_REQUIRES esp_timer spiffs', patched, 1)
-    path.write_text(text)
+    text = text.replace('PRIV_REQUIRES esp_timer spiffs', patched_requires, 1)
 else:
-    raise SystemExit('BLOCKED: unexpected upstream msg_store CMakeLists.txt shape')
+    raise SystemExit('BLOCKED: unexpected upstream msg_store PRIV_REQUIRES shape')
+
+path.write_text(text)
 PY
 
 overlay_commit="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -73,6 +90,7 @@ cat > "${foundation_dir}/.firmware-mash-overlay" <<EOF
 foundation_commit=${expected_commit}
 firmware_mash_commit=${overlay_commit}
 message_store_adapter=transactional-journal-snapshot
+message_store_payload_schema=bramble-stored-msg-v1-layout-guarded
 EOF
 
 echo "Firmware-mash overlay applied to ${foundation_dir}"
