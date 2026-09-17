@@ -9,6 +9,7 @@ This directory is the design and evidence source of truth before production firm
 - `IMPLEMENTATION_BLUEPRINT.md` — exact module and coding order after baseline approval.
 - `ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` — master execution contract for a coding agent.
 - `UI_UX_CONTRACT.md` — smartphone-like T-Deck user experience.
+- `UI_IMPLEMENTATION_MAP.md` — exact screens, navigation, UI state mapping and event bindings.
 - `PACKET_DELIVERY_CONTRACT.md` — PacketId, ACK, delayed-delivery and exactly-once presentation semantics.
 - `WIRE_PROTOCOL_CONTRACT.md` — transport-neutral wire layering, versioning and compatibility rules.
 - `STANDALONE_TDECK_REQUIREMENTS.md` — no-microSD, internal-storage and recovery requirements.
@@ -64,7 +65,7 @@ Do not duplicate the same normative rule across multiple documents unless one fi
 - storage/no-SD requirements -> `STANDALONE_TDECK_REQUIREMENTS.md`;
 - MessageStore internals -> `MESSAGE_STORE_DESIGN.md`;
 - build/feature configurations -> `BUILD_CONFIG_MATRIX.md`;
-- UI behavior -> `UI_UX_CONTRACT.md`;
+- UI behavior -> `UI_UX_CONTRACT.md` / `UI_IMPLEMENTATION_MAP.md`;
 - resource limits -> `RESOURCE_BUDGET.md`;
 - user-facing stable release requirement -> `USER_RELEASE_CONTRACT.md`;
 - test evidence -> `TESTING.md` / `TEST_TRACEABILITY.md`;
