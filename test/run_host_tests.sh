@@ -27,6 +27,14 @@ include_flags=(-I"${repo_root}/components/mog_message_store/include")
   "${repo_root}/test/host/test_mog_store_state.c" \
   -o "${build_dir}/test_mog_store_state"
 
+# Compile the durable stored_msg_t layout contract independently. Any upstream
+# field-order/width/padding drift must fail the build and force an explicit
+# storage-schema migration review instead of silently reinterpreting bytes.
+"$cc_bin" "${common_flags[@]}" \
+  -I"${repo_root}/test/host/bramble_shim" \
+  -c "${repo_root}/overlay/bramble/components/msg_store/mog_msg_store_layout_guard.c" \
+  -o "${build_dir}/mog_msg_store_layout_guard.o"
+
 # Compile the actual Bramble adapter's ESP_PLATFORM branch against lightweight
 # host shims. Only the mount path strings are redirected from /spiffs to /tmp;
 # the adapter logic itself is the production overlay source.
