@@ -22,7 +22,7 @@ This is the single checklist of intended product capabilities. It prevents a one
 - Direct messages/conversations.
 - Conversation identity independent from transport/path.
 - One logical PacketId per message.
-- End-to-end delivery evidence distinct from link TX success.
+- End-to-end delivery evidence distinct from link, gateway or custody success.
 - Automatic bounded retries.
 - Exactly-once application presentation within dedup policy.
 - Clear states: Sending, Waiting for connection, Queued, Delivered, Expired/failed.
@@ -49,11 +49,12 @@ This is the single checklist of intended product capabilities. It prevents a one
 
 ### Store-and-forward / delayed delivery
 
-- Durable WAITING_ROUTE state.
+- Durable sender-side WAITING_ROUTE state.
 - Survives reboot/power interruption once committed.
 - Route/link recovery events make message retry-eligible immediately.
 - No fixed distance threshold.
 - Deterministic TTL/priority/full-store policy.
+- Sender-side delayed delivery remains functional even when relay custody is disabled.
 
 ### Energy management
 
@@ -87,6 +88,15 @@ This is the single checklist of intended product capabilities. It prevents a one
 - Energy-policy transition/deferral health metrics.
 - No silent failure.
 - Wrap-safe timers and stale-state recovery.
+
+### Release engineering
+
+- One reproducible T-Deck Plus release package per board/region/tier.
+- Generated manifest and SHA-256 hashes.
+- Supported one-click/web-flasher descriptor where practical.
+- User never manually assembles binary offsets/images.
+- Recovery path tied to the exact release layout.
+- STABLE publication fails closed when required evidence is missing.
 
 ## BETA target capabilities
 
@@ -124,6 +134,20 @@ ESP-NOW is promoted to STABLE only after repeatable real T-Deck hardware evidenc
 
 IP/gateway features remain BETA until real T-Deck Wi-Fi, multi-gateway failover and security/resource tests pass. Cellular capability remains target-specific and hardware-evidence-gated.
 
+### Opportunistic store-carry-forward custody
+
+- Participating relay may durably accept a protected packet and carry it while disconnected.
+- Custody acceptance only after durable local commit.
+- Same PacketId, user conversation and end-to-end envelope survive custody transfer.
+- Custody acceptance never equals Delivered.
+- Relay storage/energy/TTL policy may reject offers deterministically.
+- Initial ownership/replication remains bounded; no epidemic flooding.
+- Relay reboot preserves accepted custody.
+- Custody may use LoRa/ESP-NOW/IP paths later without changing logical identity.
+- Capability can be disabled without breaking sender-side delayed delivery.
+
+Custody remains BETA until CUS-001..CUS-010 plus repeated real T-Deck carry/reboot/delivery tests pass.
+
 ## LAB capabilities
 
 ### Ambient RF Energy Assist
@@ -154,6 +178,8 @@ LAB features must be removable and cannot become dependencies of CFG-LORA-STABLE
 - No 4G/5G mast used without legitimate modem/subscription/network access.
 - No claim that an Internet gateway preserves off-grid operation; IP is an optional path only.
 - No single mandatory cloud server owning chats or message history.
+- No uncontrolled/epidemic custody replication.
+- No custody/gateway/link acceptance shown as end-to-end Delivered.
 - No magical amplification of LoRa by unrelated ambient RF.
 - No firmware-only ambient-backscatter claim on stock T-Deck hardware.
 - No firmware-only ambient-RF energy harvesting claim on stock T-Deck hardware.
@@ -168,9 +194,9 @@ LAB features must be removable and cannot become dependencies of CFG-LORA-STABLE
 
 ## One-flash release target
 
-The intended normal-user outcome is one approved T-Deck Plus release package. A user flashes it, performs only normal onboarding, and uses the advertised STABLE features. Engineering validation remains a project responsibility, not an end-user workflow.
+The intended normal-user outcome is one approved T-Deck Plus release package generated under `FLASHER_RELEASE_CONTRACT.md`. A user flashes it, performs only normal onboarding, and uses the advertised STABLE features. Engineering validation remains a project responsibility, not an end-user workflow.
 
-The same package may contain disabled BETA/LAB interfaces, but no normal user is told that cellular, public federation or RF harvesting works unless matching hardware/network evidence exists.
+The same package may contain disabled BETA/LAB interfaces, but no normal user is told that cellular, public federation, custody or RF harvesting works unless the required evidence exists.
 
 ## Implementation completeness rule
 
@@ -181,6 +207,6 @@ A one-shot coding pass is complete only when every STABLE feature above has eith
 
 The EnergyManager software layer is part of this implementation completeness rule. The physical ambient-RF harvester is not: its interface/simulator path is implemented, while actual hardware promotion remains evidence-gated.
 
-Approved BETA architecture such as IP backhaul/gateway federation must retain its implementation seam/tests even when not yet promoted to STABLE.
+Approved BETA architecture such as IP/gateway federation and custody must retain its implementation seam/tests even when not yet promoted to STABLE.
 
 A feature may not simply disappear because implementation became difficult.
