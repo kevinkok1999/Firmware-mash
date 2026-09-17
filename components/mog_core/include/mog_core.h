@@ -12,6 +12,14 @@ extern "C" {
 typedef uint32_t mog_node_id_t;
 typedef uint64_t mog_packet_id_t;
 
+typedef enum {
+    MOG_LINK_LORA = 1,
+    MOG_LINK_ESPNOW,
+    MOG_LINK_IP,
+    MOG_LINK_NAN,
+    MOG_LINK_BACKSCATTER,
+} mog_link_type_t;
+
 typedef struct {
     mog_node_id_t origin;
     mog_packet_id_t packet_id;
@@ -50,21 +58,12 @@ typedef struct {
     bool ready;
 } mog_packet_id_generator_t;
 
-/*
- * Initialize a reserve-ahead PacketId generator.
- *
- * The persistent value is an EXCLUSIVE ceiling that is already durable. On
- * boot the generator deliberately skips any unused IDs below that old ceiling,
- * reserves the next range durably, and only then becomes ready. This makes a
- * crash/reboot unable to reissue an ID from the same origin identity.
- */
 int mog_packet_id_generator_init(mog_packet_id_generator_t *gen,
                                  uint64_t reserve,
                                  mog_counter_read_fn read_fn,
                                  mog_counter_write_fn write_fn,
                                  void *ctx);
 
-/* Issue one non-zero PacketId. State is unchanged if a required reserve write fails. */
 int mog_packet_id_next(mog_packet_id_generator_t *gen, mog_packet_id_t *out);
 
 bool mog_message_key_is_valid(mog_message_key_t key);
@@ -74,10 +73,6 @@ bool mog_message_state_is_terminal(mog_message_state_t state);
 bool mog_message_state_can_transition(mog_message_state_t from,
                                       mog_message_state_t to);
 
-/*
- * Wrap-safe runtime monotonic helpers for uint32 millisecond clocks.
- * Ordering helpers are valid only for intervals smaller than 2^31 ms.
- */
 uint32_t mog_time_elapsed32(uint32_t now, uint32_t then);
 bool mog_time_reached32(uint32_t now, uint32_t deadline);
 
