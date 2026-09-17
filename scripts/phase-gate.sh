@@ -51,6 +51,7 @@ phase1() {
   require_file components/mog_message_store/mog_store_journal.c
   require_file components/mog_message_store/include/mog_store_state.h
   require_file components/mog_message_store/mog_store_state.c
+  require_file overlay/bramble/components/msg_store/msg_store_spiffs.c
 
   require_file test/host/test_mog_store_snapshot.c
   require_file test/host/test_mog_store_journal.c
@@ -67,6 +68,7 @@ phase1() {
   elif [[ "${MOG_SKIP_FOUNDATION_SYNC:-0}" != "1" ]]; then
     echo "NOTE: target build skipped; foundation + overlay sync still verified"
     bash scripts/sync-foundation.sh
+    bash scripts/apply-overlay.sh
   else
     echo "NOTE: target build and foundation sync explicitly skipped"
   fi
