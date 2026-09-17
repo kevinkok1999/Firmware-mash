@@ -30,6 +30,8 @@ jobs:
             docs/LICENSING.md
             docs/PREBUILD_CHECKLIST.md
             docs/PREBUILD_REVIEW_2026-09-17.md
+            docs/REAL_WORLD_COMPETITOR_REVIEW_2026-09-17.md
+            docs/STANDALONE_TDECK_REQUIREMENTS.md
             docs/BASELINE_TEMPLATE.md
             docs/BUILD_PHASE_1_PLAN.md
             docs/FOUNDATION_BRAMBLE_NOTES.md
@@ -42,6 +44,7 @@ jobs:
             docs/adr/0002-foundation-selection-gate.md
             docs/adr/0003-feature-stability-and-flags.md
             docs/adr/0004-logical-packet-identity.md
+            docs/adr/0005-standalone-internal-storage.md
           )
           for f in "${required[@]}"; do
             test -s "$f" || { echo "Missing or empty required file: $f"; exit 1; }
@@ -86,6 +89,7 @@ jobs:
             '^baseline_tests=PASS$'
             '^simulator_tests=PASS$'
             '^license_review=PASS$'
+            '^no_sd_boot=PASS$'
           )
           for pattern in "${required_fields[@]}"; do
             grep -Eq "$pattern" "$marker" || {
