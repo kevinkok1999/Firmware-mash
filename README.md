@@ -1,144 +1,64 @@
 # Firmware-mash
 
-Firmware-mash is a modular communication OS/firmware project targeting the LILYGO T-Deck Plus first. The product goal is simple for the user and sophisticated underneath: one contact, one chat, one Send action; the firmware chooses the best currently valid path and keeps the message queued when no path exists.
+Firmware-mash is a foundation-first communication firmware project for the **LILYGO T-Deck Plus**. The goal is one user-facing communicator that can keep the same conversation and message identity while the system automatically uses the best available approved path: LoRa first/stable, then optional ESP-NOW/LR and IP/gateway assistance as those layers are proven.
 
-## Mission
+## Current status
 
-Build one coherent stack with:
+**Phase 1 implementation has started on `develop`.**
 
-- LoRa/SX1262 as mandatory off-grid backbone;
-- optional ESP-NOW Normal/LR local lane;
-- optional Wi-Fi/IP backhaul and gateway federation;
-- future selected cellular PPP/modem provider;
-- durable sender delayed delivery;
-- optional BETA store-carry-forward custody through participating relays;
-- one EnergyManager for battery/external-power policy;
-- optional LAB Ambient RF Energy Assist hardware provider;
-- smartphone-like local Messages/Contacts/Network/Settings UI;
-- one reproducible release/flasher package after evidence gates pass.
+The pinned foundation is `justinlindh/bramble` at commit `23854fd883fd29da14d8c0876f6eca4e14fbb938`, recorded in `docs/BASELINE_APPROVED`. New Firmware-mash production code is built as a controlled overlay on that exact foundation rather than as an unrelated parallel stack.
 
-## Project state
+The project is intentionally built like a house:
 
-**ARCHITECTURE READY FOR CODING; PRODUCTION CODING STILL BLOCKED BY BASELINE EVIDENCE.**
+1. **Phase 1 — Foundation and durable core**: pinned board/toolchain, internal MessageStore durability, reboot/power-loss recovery, host/fault tests.
+2. **Phase 2 — Communication engine**: PacketId/events, EnergyManager, LoRa/AirtimeManager, HybridRouter, reliability, custody, ESP-NOW and IP/gateway federation.
+3. **Phase 3 — Product and flasher**: smartphone-like UI, configuration, recovery/OTA, exact T-Deck build, release manifests and supported one-action flashing.
 
-The final controller pass reports zero unresolved architecture contradictions. Production source remains intentionally locked until `docs/BASELINE_APPROVED` exists with genuine baseline evidence. `main` remains the clean release line; preparation lives on `develop`.
+See `docs/THREE_PHASE_IMPLEMENTATION_PLAN.md` for the mandatory gates.
 
-## Core architecture
+## Core invariants
 
-```text
-User chat / Message service
-          |
-          v
-  ReliabilityManager
-     |          |
-     |     optional Custody
-     v          |
-    HybridRouter <----- EnergyPolicySnapshot
-     |
-     +-- LoRa (required)
-     +-- ESP-NOW Normal/LR (optional)
-     +-- IP transport (optional)
-           +-- Wi-Fi NetifProvider
-           +-- selected Cellular NetifProvider
-           +-- GatewayManager / Federation
+- one logical `HybridRouter`;
+- one logical message/PacketId across retry, failover and transport changes;
+- one continuous conversation per contact/group, independent of route or transport;
+- destination end-to-end ACK is the only source of user-visible `Delivered` truth;
+- custody/store-carry-forward never pretends to be final delivery;
+- all LoRa airtime passes through the approved AirtimeManager path;
+- one `EnergyManager` owns device energy policy;
+- all queues, retries and durable stores are bounded;
+- internal flash is the core durability path; microSD is optional only;
+- no custom cryptographic primitives;
+- optional transports cannot become dependencies of the stable LoRa-only core.
+
+## Phase 1 storage work
+
+The pinned Bramble foundation already has internal SPIFFS message persistence. Source review found two bounded durability risks for Firmware-mash requirements: in-place rollover/compaction and in-place record/status updates. A power cut during either can damage committed state.
+
+Firmware-mash therefore adds:
+
+- an **append-only CRC journal** for normal durable mutations;
+- **dual-generation transactional snapshots** for compaction/recovery;
+- host fault tests before hardware promotion;
+- explicit hardware power-cut/no-SD evidence before STABLE release.
+
+See `docs/PHASE1_STORAGE_DURABILITY_DESIGN.md`.
+
+## Build gates
+
+The intended local/CI entry points are:
+
+```bash
+bash scripts/phase-gate.sh 1
+bash scripts/phase-gate.sh 2
+bash scripts/phase-gate.sh 3
 ```
 
-One logical PacketId and one conversation survive retries, failover, gateway traversal, reboot and optional custody transfer.
+Phase 2 and Phase 3 intentionally remain red until their actual source/tests exist. The release workflow also refuses to generate a user-facing package until Phase 3 passes.
 
-## Hard rules
+GitHub Actions runner scheduling is currently an external infrastructure limitation in this repository: recent jobs are being created but remain queued before step 1. A queued job is not treated as a compiler/test result.
 
-- Exactly one routing authority: `HybridRouter`.
-- Exactly one device power-policy authority: `EnergyManager`.
-- Destination E2E ACK is the only user-message `Delivered` truth.
-- LoRa link success, ESP-NOW callback, TCP/TLS write, gateway acceptance and custody acceptance are **not** Delivered.
-- Core boot/messaging/recovery works without microSD.
-- Stable core works without Internet, cellular modem, custody or RF-harvest accessory.
-- Sender-side pending messages survive reboot and retry automatically when credible connectivity returns.
-- No fixed-distance retry trigger.
-- Custody acceptance, when enabled, occurs only after relay durable commit.
-- Custody replication/ownership is bounded; no epidemic flooding.
-- Wi-Fi/cellular are IP bearers, not separate chats/routing stacks.
-- No arbitrary third-party router is treated as an unconfigured Firmware-mash relay.
-- No single mandatory cloud server owns chats/history.
-- Every LoRa TX passes AirtimeManager.
-- All queues/tables/retries/sessions/custody records are bounded.
-- No custom cryptographic primitives.
-- No compile/simulator result is called hardware validation.
-- Missing approved project code is implemented under `mog_` components rather than silently dropped.
-- Exact flash offsets/resource capacities are measured/generated, never guessed.
+## User experience target
 
-## Authoritative implementation order
+The end user should simply open a contact and send a message. The firmware may internally choose or change between LoRa, participating relays, ESP-NOW/LR and approved IP gateways, but those changes never create a new chat or duplicate user message.
 
-After valid baseline approval:
-
-1. pinned foundation integration;
-2. internal MessageStore/no-SD durability;
-3. packet/event/core primitives;
-4. EnergyManager;
-5. LoRa + AirtimeManager;
-6. HybridRouter LoRa-only seam;
-7. reliability/dedup/sender delayed delivery;
-8. multipath/route scoring;
-9. optional custody core on the proven LoRa/storage foundation;
-10. ESP-NOW Normal/LR;
-11. IP backhaul/gateway federation;
-12. cross-transport queued/custody recovery;
-13. health/metrics/controller review;
-14. smartphone-like UI;
-15. optional RF-harvest provider seam;
-16. optional lab features;
-17. release/flasher package.
-
-See `docs/CODING_TRIGGER_CONTRACT.md`, `docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` and `docs/IMPLEMENTATION_BLUEPRINT.md`.
-
-## One-click coding readiness
-
-A manual GitHub workflow exists at `.github/workflows/coding-readiness.yml`.
-
-It is deliberately fail-closed. It checks:
-
-- `develop` branch;
-- valid `docs/BASELINE_APPROVED`;
-- required architecture contracts;
-- final controller status with zero architecture contradictions.
-
-When green, a coding agent follows `docs/CODING_TRIGGER_CONTRACT.md`. The workflow validates readiness; it does not pretend GitHub Actions can autonomously write the whole firmware without a coding agent.
-
-## One-click release/flasher target
-
-`.github/workflows/release-package.yml` is the future manual package trigger. It deliberately fails today because production source, `scripts/release-package.sh` and release evidence do not exist yet.
-
-After implementation it must generate from real build metadata:
-
-```text
-firmware binary / supported flash set
-release-manifest.json
-SHA256SUMS
-flasher-manifest.json
-README-RECOVERY.txt
-```
-
-Normal users should never concatenate binaries or calculate offsets manually. See `docs/FLASHER_RELEASE_CONTRACT.md`.
-
-## Evidence tiers
-
-- **STABLE:** no-SD standalone LoRa core, durable store, proven reliability/multipath, local UI, EnergyManager and tested release/recovery path.
-- **BETA:** individually proven ESP-NOW, IP/gateway and/or custody capabilities.
-- **LAB:** RF-harvest hardware, unproven cellular targets, NAN/NAT/RF-assist/backscatter experiments.
-
-## Current known blockers
-
-These are evidence/infrastructure blockers, not unresolved architecture:
-
-- `docs/BASELINE_APPROVED` is not yet present;
-- project GitHub Actions jobs are currently observed queued before any step executes;
-- exact resource/partition values still require measured baseline build evidence;
-- hardware-facing feature promotion requires real T-Deck/modem/harvester tests.
-
-## Final controller
-
-Read `docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md` for the three-phase final audit and current go/no-go status.
-
-## Documentation
-
-Start at `docs/README.md`. Production source remains locked by preflight until the baseline gate genuinely passes.
+The final supported release path is intended to produce exact T-Deck Plus firmware binaries, hashes, a flasher manifest and recovery instructions from one verified build. Flashability and STABLE status are not claimed until the target build and real-device evidence gates pass.
