@@ -120,7 +120,7 @@ jobs:
             '^baseline_tests=PASS$'
             '^simulator_tests=PASS$'
             '^license_review=PASS$'
-            '^no_sd_boot=PASS$'
+            '^no_sd_dependency_review=PASS$'
           )
           for pattern in "${required_fields[@]}"; do
             grep -Eq "$pattern" "$marker" || {
