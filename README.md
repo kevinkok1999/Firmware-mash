@@ -1,89 +1,144 @@
 # Firmware-mash
 
-Firmware-mash is a research-led, modular off-grid messaging firmware project targeting the LILYGO T-Deck Plus (ESP32-S3 + SX1262) first.
+Firmware-mash is a modular communication OS/firmware project targeting the LILYGO T-Deck Plus first. The product goal is simple for the user and sophisticated underneath: one contact, one chat, one Send action; the firmware chooses the best currently valid path and keeps the message queued when no path exists.
 
 ## Mission
 
-Build one coherent communication stack in which a single `HybridRouter` can choose between available links, retain alternate paths, fail over automatically, and queue encrypted messages when no route exists. LoRa remains the mandatory long-range backbone; ESP-NOW Normal/Long Range is planned as an optional local/hybrid lane. NAN, RF-assist/RIS and external backscatter remain experimental until proven useful on real hardware.
+Build one coherent stack with:
 
-A separate `EnergyManager` owns power policy for the T-Deck. It can optimize battery/external-power operation on stock hardware and later accept an optional external Ambient RF Energy Assist provider without making routing dependent on harvesting hardware. Ambient RF harvesting is treated as energy-only and remains LAB until real rectenna/PMIC/storage hardware is measured.
-
-The normal user experience must feel like a compact familiar smartphone: Home, Messages, Contacts, Network and Settings. The user sends a message; routing, retries, LoRa/ESP-NOW choice, multipath, delayed delivery and energy-saving behavior happen automatically in the background.
+- LoRa/SX1262 as mandatory off-grid backbone;
+- optional ESP-NOW Normal/LR local lane;
+- optional Wi-Fi/IP backhaul and gateway federation;
+- future selected cellular PPP/modem provider;
+- durable sender delayed delivery;
+- optional BETA store-carry-forward custody through participating relays;
+- one EnergyManager for battery/external-power policy;
+- optional LAB Ambient RF Energy Assist hardware provider;
+- smartphone-like local Messages/Contacts/Network/Settings UI;
+- one reproducible release/flasher package after evidence gates pass.
 
 ## Project state
 
-**PRE-BUILD / CODE-READY SUBJECT TO BASELINE EVIDENCE.** No production firmware has been added yet. The `main` branch is the clean release line. Preparatory architecture, licensing, testing, UX, energy-management and implementation contracts live on `develop`.
+**ARCHITECTURE READY FOR CODING; PRODUCTION CODING STILL BLOCKED BY BASELINE EVIDENCE.**
+
+The final controller pass reports zero unresolved architecture contradictions. Production source remains intentionally locked until `docs/BASELINE_APPROVED` exists with genuine baseline evidence. `main` remains the clean release line; preparation lives on `develop`.
+
+## Core architecture
+
+```text
+User chat / Message service
+          |
+          v
+  ReliabilityManager
+     |          |
+     |     optional Custody
+     v          |
+    HybridRouter <----- EnergyPolicySnapshot
+     |
+     +-- LoRa (required)
+     +-- ESP-NOW Normal/LR (optional)
+     +-- IP transport (optional)
+           +-- Wi-Fi NetifProvider
+           +-- selected Cellular NetifProvider
+           +-- GatewayManager / Federation
+```
+
+One logical PacketId and one conversation survive retries, failover, gateway traversal, reboot and optional custody transfer.
 
 ## Hard rules
 
-- Exactly one logical routing authority: `HybridRouter`.
-- Exactly one logical device energy-policy authority: `EnergyManager`.
-- LoRa-only operation must always remain possible.
-- Core boot, identity, send/receive, queued delivery and recovery must work without a microSD card.
-- Stable core operation must work without any RF-harvesting accessory installed.
-- A queued message is retried automatically when credible usable connectivity returns; there is no fixed-distance retry trigger.
-- One logical PacketId survives retries, transport changes, failover and reboot recovery.
-- ESP-NOW Normal and Long Range are capabilities of one transport adapter, not separate user-selected networks.
-- Energy harvesting is not a transport and never creates a logical mesh hop.
-- No unbounded flooding, queues, routing tables or retries.
-- No custom cryptography.
-- Experimental features stay behind build flags and cannot silently become stable.
-- A compile result is not hardware validation.
-- Ambient-RF harvesting cannot be claimed on stock T-Deck hardware without compatible external hardware and measured evidence.
-- Upstream code is reused only when licensing is compatible and notices are preserved.
-- Missing Firmware-mash integration/policy/provider code is implemented in-project against documented SDK/vendor interfaces rather than silently dropping approved capabilities.
-- EU868 duty-cycle and regional limits are treated as design constraints.
-- Generated build output and local credentials never belong in Git; dependency lockfiles used for reproducible application builds do.
-- Normal users are not the engineering test harness.
+- Exactly one routing authority: `HybridRouter`.
+- Exactly one device power-policy authority: `EnergyManager`.
+- Destination E2E ACK is the only user-message `Delivered` truth.
+- LoRa link success, ESP-NOW callback, TCP/TLS write, gateway acceptance and custody acceptance are **not** Delivered.
+- Core boot/messaging/recovery works without microSD.
+- Stable core works without Internet, cellular modem, custody or RF-harvest accessory.
+- Sender-side pending messages survive reboot and retry automatically when credible connectivity returns.
+- No fixed-distance retry trigger.
+- Custody acceptance, when enabled, occurs only after relay durable commit.
+- Custody replication/ownership is bounded; no epidemic flooding.
+- Wi-Fi/cellular are IP bearers, not separate chats/routing stacks.
+- No arbitrary third-party router is treated as an unconfigured Firmware-mash relay.
+- No single mandatory cloud server owns chats/history.
+- Every LoRa TX passes AirtimeManager.
+- All queues/tables/retries/sessions/custody records are bounded.
+- No custom cryptographic primitives.
+- No compile/simulator result is called hardware validation.
+- Missing approved project code is implemented under `mog_` components rather than silently dropped.
+- Exact flash offsets/resource capacities are measured/generated, never guessed.
 
-## Planned build order
+## Authoritative implementation order
 
-1. Reproduce and pin the selected T-Deck Plus foundation.
-2. Prove standalone internal persistence/recovery with no microSD dependency.
-3. Add PacketId/event/core primitives while preserving the foundation security/wire envelope.
-4. Add EnergyManager with stock battery/external-power abstraction and hysteretic power states.
-5. Introduce a LoRa-only HybridRouter skeleton with no behavior regression.
-6. Add bounded reliability/dedup and durable delayed delivery.
-7. Add bounded multipath route sets, deterministic failover and energy-aware route scoring.
-8. Add ESP-NOW Normal + Long Range capability under one optional `TransportAdapter` and validate hybrid forwarding.
-9. Integrate the smartphone-like local UI so Messages/Contacts/Network/Settings remain simple while routing and energy policy stay automatic.
-10. Add the optional Ambient RF Energy Assist software provider seam/mock without making stable firmware depend on it.
-11. Run simulator, host and real multi-node/no-SD/power-loss/re-entry/UI/battery acceptance tests.
-12. Produce a one-flash release package only for features that meet their evidence tier.
-13. Only then evaluate real Ambient RF harvesting hardware, NAN, RF-assist, TDMA/regional routing and external backscatter.
+After valid baseline approval:
 
-## One-shot implementation
+1. pinned foundation integration;
+2. internal MessageStore/no-SD durability;
+3. packet/event/core primitives;
+4. EnergyManager;
+5. LoRa + AirtimeManager;
+6. HybridRouter LoRa-only seam;
+7. reliability/dedup/sender delayed delivery;
+8. multipath/route scoring;
+9. optional custody core on the proven LoRa/storage foundation;
+10. ESP-NOW Normal/LR;
+11. IP backhaul/gateway federation;
+12. cross-transport queued/custody recovery;
+13. health/metrics/controller review;
+14. smartphone-like UI;
+15. optional RF-harvest provider seam;
+16. optional lab features;
+17. release/flasher package.
 
-Once `docs/BASELINE_APPROVED` contains genuine PASS evidence, implementation should follow [`docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md`](docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md). That runbook defines source-of-truth precedence, coding order, automatic problem-resolution behavior, missing-code implementation rules, controller passes and completion gates so implementation does not repeatedly reopen settled architecture decisions.
+See `docs/CODING_TRIGGER_CONTRACT.md`, `docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` and `docs/IMPLEMENTATION_BLUEPRINT.md`.
 
-## Energy architecture
+## One-click coding readiness
 
-See [`docs/ENERGY_MANAGEMENT_CONTRACT.md`](docs/ENERGY_MANAGEMENT_CONTRACT.md) and ADR 0006. The software target is:
+A manual GitHub workflow exists at `.github/workflows/coding-readiness.yml`.
+
+It is deliberately fail-closed. It checks:
+
+- `develop` branch;
+- valid `docs/BASELINE_APPROVED`;
+- required architecture contracts;
+- final controller status with zero architecture contradictions.
+
+When green, a coding agent follows `docs/CODING_TRIGGER_CONTRACT.md`. The workflow validates readiness; it does not pretend GitHub Actions can autonomously write the whole firmware without a coding agent.
+
+## One-click release/flasher target
+
+`.github/workflows/release-package.yml` is the future manual package trigger. It deliberately fails today because production source, `scripts/release-package.sh` and release evidence do not exist yet.
+
+After implementation it must generate from real build metadata:
 
 ```text
-Battery / USB / board telemetry
-            |
-            v
-       EnergyManager
-            |
-      EnergyPolicySnapshot
-         /         \
-        v           v
- HybridRouter    UI/power policy
-
-Optional external RF-harvest hardware
-(rectenna/PMIC/storage)
-            |
-            v
-     RFHarvestProvider
-            |
-            +----> EnergyManager
+firmware binary / supported flash set
+release-manifest.json
+SHA256SUMS
+flasher-manifest.json
+README-RECOVERY.txt
 ```
 
-The preferred future RF-harvesting hardware assumption is a separate harvesting antenna/rectenna so the tuned EU868 communications path is not silently loaded or detuned.
+Normal users should never concatenate binaries or calculate offsets manually. See `docs/FLASHER_RELEASE_CONTRACT.md`.
+
+## Evidence tiers
+
+- **STABLE:** no-SD standalone LoRa core, durable store, proven reliability/multipath, local UI, EnergyManager and tested release/recovery path.
+- **BETA:** individually proven ESP-NOW, IP/gateway and/or custody capabilities.
+- **LAB:** RF-harvest hardware, unproven cellular targets, NAN/NAT/RF-assist/backscatter experiments.
+
+## Current known blockers
+
+These are evidence/infrastructure blockers, not unresolved architecture:
+
+- `docs/BASELINE_APPROVED` is not yet present;
+- project GitHub Actions jobs are currently observed queued before any step executes;
+- exact resource/partition values still require measured baseline build evidence;
+- hardware-facing feature promotion requires real T-Deck/modem/harvester tests.
+
+## Final controller
+
+Read `docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md` for the three-phase final audit and current go/no-go status.
 
 ## Documentation
 
-Start at [`docs/README.md`](docs/README.md). It indexes architecture, API/wire/delivery contracts, the no-SD storage design, EnergyManager/Ambient RF Energy Assist contract, smartphone UX, build configurations, test traceability, resource budgets, reviews and ADRs.
-
-The intended future code layout is defined in [`docs/REPOSITORY_LAYOUT.md`](docs/REPOSITORY_LAYOUT.md). Production source remains locked by CI until the baseline evidence gate passes.
+Start at `docs/README.md`. Production source remains locked by preflight until the baseline gate genuinely passes.
