@@ -2,70 +2,70 @@
 
 ## Purpose
 
-Every stable requirement maps to at least one concrete test. This prevents implementation from drifting away from the architecture while still claiming completion.
+Every requirement maps to concrete evidence. A source file existing or compiling is never enough by itself.
 
 | Requirement | Primary owner | Required evidence |
 |---|---|---|
 | No microSD required for core operation | standalone/storage | no-SD cold boot + send/receive + queue/reboot/recover |
-| One logical PacketId across retries/transports | packet/reliability | duplicate-path + retry + transport-switch tests |
+| One logical PacketId across retries/transports/custody | packet/reliability | duplicate-path + retry + transport/custody switch tests |
 | Conversation identity independent from transport | UI/message/packet | LoRa/IP/ESP-NOW mixed-path conversation test |
 | One routing authority | HybridRouter | architecture/static review + adapter isolation tests |
 | One energy-policy authority | EnergyManager | architecture/static review + provider isolation tests |
 | LoRa-only remains functional | LoRa/router | CFG-LORA-STABLE compile + hardware regression |
 | Stable firmware works with RF harvesting absent | energy/build | CFG-LORA-STABLE with harvester OFF + stock-hardware regression |
-| Stable firmware works with all IP/gateway features absent | build/router | CFG-LORA-STABLE with IP/gateway OFF + hardware regression |
+| Stable firmware works with all IP/gateway/custody features absent | build/router | CFG-LORA-STABLE with optional features OFF + hardware regression |
 | Automatic retry when connectivity returns | reliability/store/router | offline -> route-up -> auto delivery without second Send press |
-| No fixed distance retry threshold | reliability/router | route-up event at varied simulated conditions; no distance field in retry policy |
+| No fixed distance retry threshold | reliability/router | route-up event at varied conditions; no distance field in retry policy |
 | Cached alternate before broad rediscovery | multipath/router | A-B-D / A-C-D failover simulator + hardware test |
 | Duplicate arrival displayed once | dedup/reliability | multipath duplicate + lost-ACK replay test |
 | Route errors only invalidate relevant paths | router | unrelated-RERR regression test |
 | Retry/discovery bounded | reliability/router/airtime | high-loss stress + congestion tests |
 | Energy-state transitions hysteretic | energy | noisy battery/source simulation without state flapping |
-| Low-energy policy remains bounded | energy/router | critical/survival simulations with no retry/discovery storm |
-| Energy deferral does not fake delivery | energy/reliability | deferred TX remains queued/pending until real E2E ACK |
+| Energy deferral does not fake delivery | energy/reliability | deferred TX remains pending until real E2E ACK |
 | Invalid power sample isolated | energy/health | impossible/stale sample rejection + safe-policy test |
-| Energy provider failure cannot break LoRa | energy/LoRa | provider fault/removal test + CFG-LORA-STABLE regression |
-| ESP-NOW Normal supported when enabled | espnow | direct hardware send/receive + hybrid forwarding |
-| ESP-NOW LR supported when enabled/compatible | espnow | target capability check + direct hardware LR test |
-| ESP-NOW mode choice automatic | espnow/router | NORMAL/LR capability/fallback test; no required user toggle |
+| Energy provider failure cannot break LoRa | energy/LoRa | provider fault/removal + CFG-LORA-STABLE regression |
+| ESP-NOW Normal/LR integration | espnow | direct hardware + fallback + hybrid forwarding |
 | 2.4 GHz coexistence bounded | radio scheduler | ESP-NOW/Wi-Fi/BLE coexistence hardware test |
-| Wi-Fi IP backhaul preserves PacketId/chat | IP/router/UI | real T-Deck Wi-Fi send/receive + mixed-route test |
+| Wi-Fi IP backhaul preserves PacketId/chat | IP/router/UI | real T-Deck Wi-Fi + mixed-route test |
 | IP socket success is not delivery truth | IP/reliability | gateway accepts packet but destination ACK withheld |
-| IP loss automatically falls back | IP/router | active IP path dropped; radio alternate or WAITING_ROUTE |
-| IP recovery triggers queued retry | IP/reliability/store | offline IP gateway -> gateway returns -> auto retry |
-| Wi-Fi and cellular are bearer providers, not routers | IP architecture | static/provider-isolation test |
+| IP loss automatically falls back | IP/router | active IP path dropped -> radio alternate or WAITING_ROUTE |
+| IP recovery triggers queued retry | IP/reliability/store | gateway returns -> automatic retry |
+| Wi-Fi/cellular are bearer providers, not routers | IP architecture | static/provider-isolation test |
 | Gateway advertisements expire and are bounded | gateway | stale/flood/overflow simulation |
 | Unauthenticated gateway advertisements fail closed | gateway/security | forged/invalid advertisement negative tests |
 | Bootstrap loss does not break active federation peers | gateway/federation | remove bootstrap after peer sessions established |
 | Federation peer loss invalidates only affected paths | gateway/router | multi-peer failover scenario |
-| Gateway route loops remain bounded | gateway/router | federation loop-attempt simulation |
-| Duplicate mixed radio/IP arrival displayed once | dedup/reliability | same PacketId via LoRa and IP gateway paths |
-| Cellular provider failure cannot break LoRa | IP/cellular | modem unavailable/drop test + CFG-LORA-STABLE regression |
-| Normal handheld requires no public inbound socket | IP/gateway | CFG-IP-BETA architecture/integration test |
+| Gateway loops/control flood bounded | gateway/router | federation loop/flood simulation |
+| Cellular provider failure cannot break LoRa | IP/cellular | modem unavailable/drop + stable regression |
+| Custody commit precedes acceptance | custody/store | power-cut/commit-order test |
+| Custody acceptance is not Delivered | custody/reliability/UI | accepted custody with destination offline remains not-delivered |
+| Relay reboot preserves accepted custody | custody/store | reboot recovery + later forward |
+| Custody duplicate/reconciliation remains bounded | custody/dedup | lost evidence + duplicate offer/accept stress |
+| Storage/energy pressure rejects custody safely | custody/energy/store | full-store + critical-energy rejection |
+| Custody disabled preserves sender delayed delivery | custody/build/reliability | CFG-LORA-STABLE regression + WAITING_ROUTE test |
 | Pending messages survive reboot | MessageStore | reboot recovery test |
 | Corrupt/incomplete queue tail cannot boot-loop | MessageStore | fault-injection recovery test |
 | Full MessageStore deterministic | MessageStore | near-full/full-store test |
-| Identity/config isolated from queue churn | storage | corrupt/erase queue-domain test preserving identity/config |
-| All LoRa TX pass AirtimeManager | LoRa/airtime | code-path/static test + integration test |
-| Experimental transport removal does not break stable core | build config | CFG-LORA-STABLE build with all beta/lab adapters OFF |
-| RF-harvest provider compiles independently | energy/build | CFG-ENERGY-LAB with mock provider ON |
-| RF-harvest provider can be removed | energy/build | same commit builds with provider OFF |
-| TX-reserve event cannot bypass reliability/airtime | energy/reliability | mock TX_RESERVE_READY integration test |
-| Harvest measurements never fabricated | energy | unknown/missing telemetry remains unknown in API/UI diagnostics |
-| Shared-antenna harvesting not enabled without evidence | release/RF | configuration/review gate; no stable default path |
-| Stable logical envelope survives transport changes | packet/wire | LoRa->ESP-NOW/IP retry/failover with same PacketId |
-| Unknown/malformed wire version rejected cleanly | packet/wire | parser negative tests |
-| Fragmentation cannot create duplicate app message | packet/reliability | fragment loss/duplicate/reassembly tests |
-| Smartphone-like Home/Messages/Contacts/Network/Settings flow | UI | navigation acceptance test on target/emulator |
-| Keyboard/trackball/touch core messaging usable without phone | UI | target input acceptance test |
-| UI remains responsive during route search/store/energy/IP work | UI/core | non-blocking interaction under discovery + compaction + energy/gateway changes |
-| Queued message visibly transitions to Delivered automatically | UI/reliability | delayed-delivery UI state test |
-| Normal UI requires no transport/route/gateway/power-electronics tuning | UI/router/energy | user-flow review + settings inspection |
-| User gets one-flash normal experience | release | release package + documented stable evidence |
+| Identity/config isolated from queue churn | storage | corrupt/erase queue-domain preserving identity/config |
+| All LoRa TX pass AirtimeManager | LoRa/airtime | static code-path + integration test |
+| Optional transport/provider removal preserves stable core | build config | CFG-LORA-STABLE with beta/lab adapters OFF |
+| RF-harvest provider compiles independently/removable | energy/build | CFG-ENERGY-LAB + stable provider-OFF build |
+| Harvest measurements never fabricated | energy | unknown/missing telemetry remains unknown |
+| Stable logical envelope survives transport changes | packet/wire | LoRa->ESP-NOW/IP failover with same PacketId |
+| Unknown/malformed wire version rejected | packet/wire | parser negative tests |
+| Smartphone local UI flow | UI | navigation + keyboard/trackball/touch acceptance |
+| Queued message visibly transitions automatically | UI/reliability | WAITING -> Sending -> Delivered test |
+| Normal UI hides route/gateway/power engineering | UI | settings/user-flow inspection |
+| Clean checkout can create release package | release | release pipeline acceptance |
+| Release hashes/manifest match binaries | release | manifest/hash verification |
+| Flash descriptor derives from build layout | release | generated partition/offset comparison |
+| STABLE rejects missing hardware evidence | release | negative release-gate test |
+| Recovery path matches exact release layout | release | flash/recovery acceptance on target |
+| User performs no manual binary assembly | release/flasher | end-to-end flasher acceptance |
+| Coding trigger refuses invalid baseline | coding trigger/preflight | missing/invalid marker negative test |
+| Coding trigger preserves document precedence | coding trigger/controller | contradiction fixture must stop before source mutation |
 
 ## Test IDs
-
-Use stable IDs in future automated tests and reports:
 
 ```text
 STO-001 no-SD boot
@@ -86,7 +86,7 @@ ESP-004 ESP-NOW -> LoRa hybrid
 ESP-005 LoRa -> ESP-NOW hybrid
 RAD-001 2.4 GHz coexistence
 AIR-001 LoRa airtime gate enforcement
-REL-001 end-to-end ACK vs link success
+REL-001 end-to-end ACK vs link/socket/custody success
 REL-002 retry bound/backoff
 DED-001 multipath duplicate exactly-once presentation
 DED-002 mixed LoRa/IP duplicate exactly-once presentation
@@ -112,6 +112,16 @@ GW-008 malformed federation frame fail-closed
 CELL-001 selected modem PPP provider lifecycle
 CELL-002 modem/network loss radio fallback
 CELL-003 cellular power/cost metrics hardware evidence
+CUS-001 durable commit precedes custody acceptance
+CUS-002 sender powers off after accepted custody; relay later delivers
+CUS-003 relay reboot preserves accepted custody
+CUS-004 duplicate custody offer/accept exactly-once app presentation
+CUS-005 full-store/critical-energy custody rejection
+CUS-006 lost custody evidence bounded reconciliation
+CUS-007 custody TTL expiry deterministic
+CUS-008 same PacketId across LoRa/ESP-NOW/IP after custody
+CUS-009 custody disabled sender WAITING_ROUTE regression
+CUS-010 malformed/unauthenticated custody control fails closed
 ENG-001 EnergyManager stock provider initialization
 ENG-002 energy-state hysteresis
 ENG-003 critical/survival bounded policy
@@ -128,20 +138,28 @@ UX-003 queued -> automatic delivered visual state
 UX-004 UI responsive during network/storage/energy/IP work
 UX-005 no normal-user transport/route/gateway/power tuning requirement
 CFG-001 LoRa-only build
-CFG-002 hybrid build
+CFG-002 hybrid ESP-NOW build
 CFG-003 energy-lab mock-provider build
 CFG-004 harvester-off stable regression
 CFG-005 IP-beta build
 CFG-006 gateway-beta build
 CFG-007 IP/gateway-off stable regression
-RELSE-001 one-flash release package
+CFG-008 custody-beta build
+CFG-009 custody-off stable regression
+TRIG-001 missing baseline blocks coding trigger
+TRIG-002 invalid baseline marker blocks coding trigger
+TRIG-003 unresolved controller contradiction blocks coding trigger
+RELSE-001 clean-checkout one-flash release package
 RELSE-002 RF-harvest claims/evidence gate
 RELSE-003 IP/cellular/federation claims/evidence gate
+RELSE-004 manifest hashes match artifacts
+RELSE-005 flasher descriptor matches generated layout
+RELSE-006 STABLE rejects missing hardware evidence
+RELSE-007 recovery path exact-release verification
+RELSE-008 no manual binary assembly / artifact maps to commit-board-region-tier
 ```
 
-## Hardware-only promotion tests for Ambient RF Energy Assist
-
-These tests are required only when real harvesting hardware exists, but must be completed before the hardware feature leaves LAB:
+## Hardware-only Ambient RF promotion tests
 
 ```text
 EHW-001 measured harvested power across documented RF conditions
@@ -153,29 +171,14 @@ EHW-006 provider unplug/failure safe fallback
 EHW-007 battery/runtime impact with and without harvesting hardware
 ```
 
-Exact acceptance limits are set from the eventual hardware design and measured T-Deck baseline, not guessed in advance.
-
 ## IP/gateway promotion evidence
 
-Wi-Fi/IP federation is not promoted from BETA on architecture alone. Require real evidence for at least:
+Require real T-Deck Wi-Fi/IP evidence, same PacketId/chat across radio/IP, at least two gateway peers on separate paths, bootstrap/peer failure tests, Internet-loss off-grid continuity, duplicate suppression, resource-pressure/security-negative tests and measured memory/power impact. Cellular additionally requires selected real modem/provider evidence.
 
-```text
-real T-Deck Wi-Fi association + IP transport
-same PacketId/chat across radio/IP paths
-at least two gateways on separate IP networks
-gateway/peer failover
-bootstrap loss with existing peer continuity
-Internet loss -> radio/store-forward continuity
-duplicate suppression across mixed paths
-bounded session/advertisement/resource pressure
-security negative tests
-power/memory impact
-```
+## Custody promotion evidence
 
-Cellular requires separate real selected-modem/provider evidence before it is advertised as supported.
+Host/simulator tests validate the state machine, but promotion beyond BETA requires repeatable real T-Deck tests covering durable accept, sender power-off, relay reboot, physical disconnection/re-entry, storage pressure, transport change and final exactly-once presentation.
 
 ## Completion rule
 
-A feature is not DONE merely because its source files exist or compile. Its mapped tests must exist and the evidence tier must be stated accurately. Hardware-facing requirements require real hardware evidence before STABLE labeling.
-
-The EnergyManager software layer can be complete before RF-harvesting hardware exists. The physical Ambient RF Energy Assist feature remains LAB until EHW evidence exists. IP/gateway architecture may be implemented before cellular hardware exists; cellular remains target-specific until CELL evidence exists.
+A feature is not DONE merely because source exists or compiles. Its mapped tests must exist and the evidence tier must be accurate. Hardware-facing requirements require real hardware evidence before STABLE labeling.
