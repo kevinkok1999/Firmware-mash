@@ -11,13 +11,13 @@ typedef uint64_t mog_packet_id_t;
 typedef enum {
     MOG_LINK_LORA = 1,
     MOG_LINK_ESPNOW,
+    MOG_LINK_IP,
     MOG_LINK_NAN,
-    MOG_LINK_TCP,
     MOG_LINK_BACKSCATTER,
 } mog_link_type_t;
 ```
 
-A logical packet gets one `mog_packet_id_t` before route selection. Transport-specific sequence/frame IDs never replace it.
+A logical packet gets one `mog_packet_id_t` before route selection. Transport-specific sequence/frame IDs never replace it. Conversation identity is separate from transport and remains stable across path changes.
 
 ## Transport capability flags
 
@@ -32,6 +32,9 @@ MOG_CAP_RSSI
 MOG_CAP_SNR
 MOG_CAP_ESPNOW_NORMAL
 MOG_CAP_ESPNOW_LR
+MOG_CAP_IP
+MOG_CAP_GATEWAY
+MOG_CAP_METERED
 MOG_CAP_LOW_POWER
 MOG_CAP_DISCOVERY
 ```
@@ -50,6 +53,22 @@ typedef enum {
 
 `AUTO` is the normal policy-facing mode. Actual support for LR must be confirmed against the pinned ESP-IDF/target before enabling it in a stable build.
 
+## IP bearer identity
+
+Wi-Fi and cellular are bearer providers below one logical IP transport.
+
+```c
+typedef enum {
+    MOG_IP_BEARER_NONE = 0,
+    MOG_IP_BEARER_WIFI,
+    MOG_IP_BEARER_CELLULAR,
+    MOG_IP_BEARER_ETHERNET,
+    MOG_IP_BEARER_OTHER,
+} mog_ip_bearer_t;
+```
+
+The user does not get a separate conversation for each bearer. A bearer change does not create a new PacketId.
+
 ## Link metrics
 
 ```c
@@ -62,12 +81,14 @@ typedef struct {
     uint16_t airtime_ms;
     uint16_t loss_permille;
     uint16_t energy_cost;
+    uint16_t monetary_cost_class;
     uint8_t congestion;
     uint8_t confidence;
+    uint8_t trust_confidence;
 } mog_link_metrics_t;
 ```
 
-Metrics are observations, not direct routing decisions. Metrics that do not apply to a transport are marked unavailable/unknown rather than fabricated.
+Metrics are observations, not direct routing decisions. Metrics that do not apply to a transport are marked unavailable/unknown rather than fabricated. `monetary_cost_class` is a bounded policy signal for metered connectivity, not a billing engine.
 
 ## TransportAdapter
 
@@ -95,6 +116,86 @@ Hard rules:
 - adapter success is link evidence, not end-to-end delivery evidence;
 - disabling an optional adapter cannot break LoRa-only operation.
 
+## IP NetifProvider
+
+`mog_transport_ip` consumes a replaceable IP bearer provider rather than modem/Wi-Fi details.
+
+Conceptual provider operations:
+
+```text
+init()
+start()
+stop()
+available()
+bearer_type()
+local_address_state()
+connectivity_state()
+metrics()
+health()
+```
+
+A cellular provider may internally use a maintained modem/PPP implementation. A Wi-Fi provider may use the selected foundation/ESP-IDF station/network stack. Routing code does not issue AT commands or manage Wi-Fi association directly.
+
+Provider failure must emit bounded state/events and degrade only the IP path.
+
+## Gateway record
+
+Gateway state is bounded, expiring evidence owned by GatewayManager, not a second route table.
+
+Conceptual record:
+
+```c
+typedef struct {
+    mog_node_id_t gateway_id;
+    uint32_t capability_flags;
+    uint32_t protocol_version;
+    uint32_t last_seen_ms;
+    uint32_t expires_at_ms;
+    uint16_t latency_ms;
+    uint16_t loss_permille;
+    uint16_t energy_cost;
+    uint16_t monetary_cost_class;
+    uint8_t trust_confidence;
+    uint8_t route_confidence;
+    bool authenticated;
+    bool reachable;
+} mog_gateway_t;
+```
+
+Exact identity/authentication representation follows the selected foundation/security design.
+
+## GatewayManager / GatewayDiscovery
+
+GatewayManager provides the equivalent of:
+
+```text
+observe_advertisement(advertisement)
+mark_session_up(gateway_id, evidence)
+mark_session_down(gateway_id, reason)
+lookup(gateway_id)
+select_candidates(destination, policy)
+age(now)
+health()
+```
+
+GatewayDiscovery may source advertisements from:
+
+```text
+mesh/radio announcement
+local LAN discovery
+configured bootstrap peer
+already-authenticated federation peer
+```
+
+Hard rules:
+
+- advertisements are bounded, versioned and expire;
+- authentication/trust is separate from mere reachability;
+- discovery cannot install routes by bypassing HybridRouter;
+- no unlimited global gateway table;
+- one unavailable bootstrap service cannot erase already-known active peers;
+- precise GPS location is not required for discovery.
+
 ## Network events
 
 Conceptual event types:
@@ -109,6 +210,13 @@ ROUTE_DISCOVERED
 ROUTE_AVAILABLE
 ROUTE_FAILED
 TRANSPORT_RECOVERED
+IP_BEARER_UP
+IP_BEARER_DOWN
+GATEWAY_DISCOVERED
+GATEWAY_AVAILABLE
+GATEWAY_LOST
+FEDERATION_SESSION_UP
+FEDERATION_SESSION_DOWN
 DELIVERY_ACK
 DELIVERY_TIMEOUT
 STORE_RETRY
@@ -118,7 +226,7 @@ ENERGY_SOURCE_CHANGED
 TX_RESERVE_READY
 ```
 
-`LINK_RECOVERED`, `NEIGHBOR_UP`, `ROUTE_DISCOVERED`, `ROUTE_AVAILABLE` and `TRANSPORT_RECOVERED` may make a durable `WAITING_ROUTE` message immediately retry-eligible. `TX_RESERVE_READY` may make an energy-deferred attempt eligible for reevaluation when compatible hardware exists. None of these events bypass ReliabilityManager, AirtimeManager or bounded anti-storm backoff/jitter.
+`LINK_RECOVERED`, `NEIGHBOR_UP`, `ROUTE_DISCOVERED`, `ROUTE_AVAILABLE`, `TRANSPORT_RECOVERED` and `GATEWAY_AVAILABLE` may make a durable `WAITING_ROUTE` message immediately retry-eligible. `TX_RESERVE_READY` may make an energy-deferred attempt eligible for reevaluation when compatible hardware exists. None of these events bypass ReliabilityManager, AirtimeManager or bounded anti-storm backoff/jitter.
 
 All events use a bounded queue/pool. Overflow increments an observable health counter and follows a documented drop/backpressure policy.
 
@@ -166,7 +274,7 @@ capabilities()
 health()
 ```
 
-Consumers receive an immutable normalized `EnergyPolicySnapshot` containing at least energy state, external-power presence, optional harvest availability/power class, relay/discovery/multipath budgets and an energy-cost bias.
+Consumers receive an immutable normalized `EnergyPolicySnapshot` containing at least energy state, external-power presence, optional harvest availability/power class, relay/discovery/multipath/IP-background budgets and an energy-cost bias.
 
 Hard rules:
 
@@ -205,12 +313,14 @@ typedef struct {
     mog_node_id_t next_hop;
     mog_link_type_t first_link;
     uint8_t hop_count;
+    uint8_t gateway_count;
     uint16_t etx_x100;
     uint16_t delivery_probability;
     uint16_t latency_ms;
     uint16_t airtime_ms;
     uint16_t congestion_cost;
     uint16_t energy_cost;
+    uint16_t monetary_cost_class;
     uint16_t freshness;
     uint16_t diversity_score;
     uint16_t confidence;
@@ -236,13 +346,13 @@ age_routes(now)
 start_discovery(destination, bounds)
 ```
 
-No adapter owns a RouteSet.
+No adapter or gateway manager owns a RouteSet.
 
 ## RouteScoreEngine
 
-Input includes ETX/PDR, latency, airtime, congestion, energy, freshness, stability and diversity. Output must include enough diagnostics to explain why a path won. Scoring configuration is versioned (`route-score-v1`, etc.) so simulator comparisons remain reproducible.
+Input includes ETX/PDR, latency, airtime, congestion, energy, optional metered-data cost, trust confidence, freshness, stability and diversity. Output must include enough diagnostics to explain why a path won. Scoring configuration is versioned (`route-score-v1`, etc.) so simulator comparisons remain reproducible.
 
-Energy cost is bounded input from link metrics plus EnergyPolicySnapshot. Reliability may not be sacrificed for tiny energy savings without explicit policy evidence.
+Energy cost is bounded input from link metrics plus EnergyPolicySnapshot. Reliability may not be sacrificed for tiny energy savings without explicit policy evidence. IP availability is not a hardcoded winner.
 
 Do not hardcode a permanent score before simulator and hardware data exist.
 
@@ -252,6 +362,7 @@ Given primary and candidate backup, report shared failure domains such as:
 
 - same first hop;
 - shared intermediate nodes;
+- shared gateway/federation peer;
 - shared links;
 - same constrained physical interface/bottleneck.
 
@@ -281,7 +392,7 @@ CRITICAL
 
 CRITICAL does not automatically duplicate traffic. A second independent path is permitted only if policy, airtime and energy budgets allow it.
 
-Energy-driven deferral must not be represented as Delivered/Failed unless ReliabilityManager reaches the corresponding actual state.
+Energy-driven deferral or successful IP socket write must not be represented as Delivered unless ReliabilityManager obtains the required end-to-end evidence.
 
 ## Dedup
 
@@ -305,7 +416,7 @@ FAILED_PERMANENT
 
 Storage is bounded, encrypted at the appropriate security boundary, TTL-controlled and uses deterministic priority/eviction behavior.
 
-Energy policy may defer work but does not mutate the logical PacketId or discard a committed message outside normal TTL/priority/full-store policy.
+Energy policy or loss of Internet may defer work but does not mutate the logical PacketId or discard a committed message outside normal TTL/priority/full-store policy.
 
 ## AirtimeManager
 
@@ -314,6 +425,8 @@ Every SX1262 transmit request passes one gate. It receives packet priority, esti
 ## 2.4 GHz RadioScheduler
 
 Coordinates ESP-NOW, Wi-Fi/NAN, BLE and scans on the ESP32-S3 shared 2.4 GHz radio. Requests provide priority, deadline/duration estimate and preemptibility. It is not a routing engine. EnergyManager may provide a background-radio budget but cannot directly create routes.
+
+Wi-Fi IP use and ESP-NOW coexistence therefore require explicit scheduling/hardware tests rather than assuming simultaneous ideal operation.
 
 ## RfIntelligence
 
@@ -338,8 +451,8 @@ RF energy harvesting is separate from RfAssistProvider and belongs under EnergyM
 
 ## NetworkHealthManager
 
-Must expose counters/high-water marks for packet/event pool pressure, route-table pressure, peer exhaustion, retries, loops detected, store pressure, airtime pressure, energy-policy deferrals, invalid energy samples, optional harvester health and stalled adapter/task state.
+Must expose counters/high-water marks for packet/event pool pressure, route-table pressure, peer exhaustion, retries, loops detected, store pressure, airtime pressure, IP reconnects, gateway/session pressure, rejected/expired gateway advertisements, energy-policy deferrals, invalid energy samples, optional harvester health and stalled adapter/task state.
 
 ## Time contract
 
-Routing/retry/store/energy timers use one monotonic abstraction. Elapsed/deadline helpers must be wrap-safe. State is represented by explicit enums/flags rather than overloading timestamp sentinel values where avoidable.
+Routing/retry/store/energy/gateway timers use one monotonic abstraction. Elapsed/deadline helpers must be wrap-safe. State is represented by explicit enums/flags rather than overloading timestamp sentinel values where avoidable.
