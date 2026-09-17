@@ -10,6 +10,20 @@
 | Memory growth from multipath | Embedded RAM is finite | Fixed-capacity route/neighbor/ACK/event pools | High-water marks within budget; exhaustion handled explicitly |
 | Retry/failover storm | Loss can trigger duplicate retries and rediscovery | Single ReliabilityManager, backoff+jitter, airtime budgets | High-loss stress test remains bounded |
 | Duplicate application delivery | Multipath can deliver the same packet twice | Stable PacketId + dedup window | Duplicate-path test shows one app delivery |
+| IP socket success mistaken for delivery | Gateway/socket acceptance is not destination delivery | ReliabilityManager remains source of E2E delivery truth | IP-006 passes with destination ACK withheld |
+| Mixed radio/IP duplicate delivery | Same PacketId may arrive through radio and federation | Transport-independent PacketId/dedup | DED-002 shows one app delivery |
+| Gateway advertisement spoofing | Fake gateways could attract traffic or exhaust state | Authenticate advertisements, trust policy, expiry and bounded tables | GW-001/GW-002/GW-008 negative tests pass |
+| Gateway/discovery table pressure | Public/federated discovery can consume RAM | Fixed-capacity gateway/advertisement/session pools with deterministic eviction | GW-003/GW-007 pass under pressure |
+| Federation control-loop/storm | Gateway summaries can loop across peers | TTL/freshness/duplicate suppression/rate limits and bounded summaries | GW-006 simulator stress remains bounded |
+| Single bootstrap dependency | One dead service could partition Internet-assisted delivery | Multiple bootstrap peers; retain authenticated active peers; radio fallback | GW-005 passes after bootstrap removal |
+| Federation peer failure over-invalidates routes | Losing one peer must not destroy unrelated paths | Path-scoped gateway/peer failure evidence | GW-004 multi-peer failover passes |
+| Cloud dependency creeps into core | Conversations/history could stop working offline | Local identity/history/MessageStore; IP optional; CFG-LORA-STABLE regression | CFG-007 + offline hardware acceptance pass |
+| Cellular modem/provider failure | Registration/SIM/data loss can strand IP path | Replaceable NetifProvider; explicit bearer-down events; radio fallback | CELL-001/CELL-002 pass on selected hardware |
+| Cellular support overclaim | Modem/eSIM/network capabilities vary by hardware/provider | Advertise only selected tested modem/provider combinations | RELSE-003 + hardware evidence |
+| IP metadata/privacy exposure | Internet gateways can reveal addresses/traffic patterns | E2E payload protection, minimal logs/advertisements, no automatic precise GPS publication | Security/privacy review before public federation |
+| Federation credential compromise | Shared/unrotated credentials could expose gateway network | Standard TLS/security libraries, unique credentials, rotation/revocation design | Security review and credential lifecycle test before public deployment |
+| Battery drain from IP keepalive/modem | Wi-Fi/cellular background activity can dominate handheld power | EnergyManager budgets, bounded reconnect/keepalive, gateway roles favor powered nodes | Real T-Deck/modem power profile recorded |
+| NAT/firewall assumptions | Handhelds behind NAT may not accept inbound sessions | Outbound sessions by default; public listeners only on gateway-class targets | CFG-IP-BETA works without inbound socket |
 | Volatile store-and-forward | A RAM-only queue loses undelivered messages on reboot/power loss | Dedicated bounded internal-flash MessageStore plus RAM index/cache | No-SD reboot/power-cut queue recovery test passes |
 | Store-and-forward pressure | Offline destinations can fill internal flash/RAM | TTL, bounded queue, priorities, deterministic eviction | Near-full store test has deterministic behavior |
 | Internal flash wear | Persisting high-churn route/RF/energy metrics can shorten flash life | Persist only critical durable state; keep route/RF/energy data in RAM/PSRAM; append/batch writes | Endurance/compaction counters measured and no per-metric persistent writes |
@@ -36,8 +50,10 @@
 
 ## Risk policy
 
-A risk is not considered closed because code compiles. Each stable feature must have a test or operational control that directly addresses its failure mode.
+A risk is not considered closed because code compiles. Each stable/beta feature must have a test or operational control that directly addresses its failure mode.
 
-The stable product definition assumes **no microSD card and no RF-harvesting accessory**. Optional storage or harvesting features cannot weaken or bypass the internal-flash durability, LoRa-backbone or delivery-truth requirements.
+The stable product definition assumes **no microSD card, no RF-harvesting accessory and no Internet connection**. Optional storage, harvesting, IP or gateway features cannot weaken or bypass the internal-flash durability, LoRa-backbone or delivery-truth requirements.
 
 Ambient RF Energy Assist cannot leave LAB based on simulator results alone. It requires actual harvested-power and communications-impact measurements.
+
+IP/gateway federation cannot be promoted based on a working socket alone. It requires real T-Deck Wi-Fi evidence, multi-gateway failure tests, security/resource-pressure tests and proof that Internet loss preserves the same local chat/off-grid behavior. Cellular support additionally requires selected real modem/provider evidence.
