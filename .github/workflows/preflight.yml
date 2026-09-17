@@ -29,6 +29,8 @@ jobs:
             docs/REPOSITORY_LAYOUT.md
             docs/RESOURCE_BUDGET.md
             docs/USER_RELEASE_CONTRACT.md
+            docs/FLASHER_RELEASE_CONTRACT.md
+            docs/CODING_TRIGGER_CONTRACT.md
             docs/UI_UX_CONTRACT.md
             docs/UI_IMPLEMENTATION_MAP.md
             docs/FEATURE_MANIFEST.md
@@ -39,6 +41,7 @@ jobs:
             docs/IP_GATEWAY_IMPLEMENTATION_CHECKLIST.md
             docs/GATEWAY_SECURITY_REQUIREMENTS.md
             docs/PACKET_DELIVERY_CONTRACT.md
+            docs/STORE_CARRY_CUSTODY_CONTRACT.md
             docs/WIRE_PROTOCOL_CONTRACT.md
             docs/MESSAGE_STORE_DESIGN.md
             docs/BUILD_CONFIG_MATRIX.md
@@ -70,6 +73,7 @@ jobs:
             docs/adr/0005-standalone-internal-storage.md
             docs/adr/0006-energy-manager-and-rf-harvest-isolation.md
             docs/adr/0007-ip-backhaul-and-gateway-federation.md
+            docs/adr/0008-store-carry-custody.md
           )
           for f in "${required[@]}"; do
             test -s "$f" || { echo "Missing or empty required file: $f"; exit 1; }
