@@ -43,9 +43,6 @@ int mog_reliability_track(mog_reliability_t *rel, mog_message_key_t key,
                           uint8_t max_attempts, uint32_t retry_base_ms)
 {
     size_t i;
-    /* mog_time_reached32() is only unambiguous for deadlines less than half
-     * the uint32_t time space away. Reject larger retry bases up front so all
-     * derived deadlines preserve that invariant. */
     if (rel == NULL || !mog_message_key_is_valid(key) || max_attempts == 0u ||
         retry_base_ms == 0u || retry_base_ms > (uint32_t)INT32_MAX)
         return MOG_REL_ERR_ARG;
@@ -98,7 +95,7 @@ int mog_reliability_note_link_success(mog_reliability_t *rel,
     mog_reliability_entry_t *e = find_mut(rel, key);
     if (e == NULL) return MOG_REL_ERR_NOT_FOUND;
     if (mog_message_state_is_terminal(e->state)) return MOG_REL_ERR_STATE;
-    return MOG_REL_OK; /* Link success is never end-to-end delivery truth. */
+    return MOG_REL_OK;
 }
 
 int mog_reliability_note_e2e_ack(mog_reliability_t *rel, mog_message_key_t key)
@@ -120,6 +117,15 @@ int mog_reliability_defer_no_route(mog_reliability_t *rel, mog_message_key_t key
     return MOG_REL_OK;
 }
 
+int mog_reliability_note_route_available(mog_reliability_t *rel,
+                                         mog_message_key_t key)
+{
+    mog_reliability_entry_t *e = find_mut(rel, key);
+    if (e == NULL) return MOG_REL_ERR_NOT_FOUND;
+    if (e->state != MOG_MSG_WAITING_ROUTE) return MOG_REL_ERR_STATE;
+    return transition(e, MOG_MSG_READY);
+}
+
 int mog_reliability_due(const mog_reliability_t *rel, uint32_t now_ms,
                         mog_message_key_t *out, size_t out_capacity,
                         size_t *out_count)
@@ -137,4 +143,22 @@ int mog_reliability_due(const mog_reliability_t *rel, uint32_t now_ms,
     }
     *out_count = n;
     return n > out_capacity ? MOG_REL_ERR_FULL : MOG_REL_OK;
+}
+
+int mog_reliability_sweep_exhausted(mog_reliability_t *rel, uint32_t now_ms,
+                                    size_t *failed_count)
+{
+    size_t i, n = 0;
+    if (rel == NULL || failed_count == NULL) return MOG_REL_ERR_ARG;
+    for (i = 0; i < MOG_RELIABILITY_MAX_TRACKED; ++i) {
+        mog_reliability_entry_t *e = &rel->entries[i];
+        if (!e->in_use || e->state != MOG_MSG_WAITING_ACK ||
+            e->attempts < e->max_attempts ||
+            !mog_time_reached32(now_ms, e->next_retry_ms)) continue;
+        if (transition(e, MOG_MSG_FAILED_PERMANENT) != MOG_REL_OK)
+            return MOG_REL_ERR_STATE;
+        n++;
+    }
+    *failed_count = n;
+    return MOG_REL_OK;
 }
