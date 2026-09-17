@@ -10,8 +10,9 @@ Production firmware work must not start until every mandatory item below is gree
 - [ ] Baseline firmware can be reproduced locally/CI.
 - [ ] Baseline host/unit tests pass.
 - [ ] Baseline simulator tests pass.
-- [ ] Baseline RAM and flash size recorded.
+- [ ] Baseline RAM, PSRAM and flash size recorded.
 - [ ] Baseline LoRa-only behavior recorded.
+- [ ] Baseline boots and reaches local UI with no microSD installed.
 
 ## Licensing
 
@@ -29,6 +30,18 @@ Production firmware work must not start until every mandatory item below is gree
 - [ ] Route, neighbor, peer, ACK, event and packet pools are bounded.
 - [ ] Every bounded structure has an overflow/eviction policy.
 - [ ] LoRa-only build remains supported.
+- [ ] Stable core has zero microSD dependency.
+
+## Internal storage
+
+- [ ] Identity/configuration remains on onboard internal flash.
+- [ ] Durable pending/store-forward messages have a separate bounded internal MessageStore design.
+- [ ] High-churn route/RF metrics stay primarily in RAM/PSRAM.
+- [ ] Message-store corruption cannot require wiping identity/configuration.
+- [ ] Power-loss recovery strategy is specified for append/delete/compaction.
+- [ ] Flash wear/compaction counters and full-store behavior are defined.
+- [ ] Exact 16 MB partition layout is chosen only after baseline image size is measured.
+- [ ] If OTA is retained, both app slots and rollback/growth margin fit alongside durable storage.
 
 ## Routing
 
@@ -49,12 +62,13 @@ Production firmware work must not start until every mandatory item below is gree
 - [ ] No custom cryptographic primitive introduced.
 - [ ] Relays do not require plaintext message access.
 
-## RF and regulatory
+## RF, power and regulatory
 
 - [ ] EU868 configuration checked against current regional requirements.
 - [ ] All LoRa TX routes through one airtime gate.
 - [ ] Critical/multipath mode cannot bypass airtime limits.
 - [ ] ESP-NOW/Wi-Fi/BLE coexistence assumptions are explicitly tested, not guessed.
+- [ ] Optional 2.4 GHz discovery has a bounded/power-aware policy.
 - [ ] RF-assist/backscatter features are disabled unless matching hardware exists.
 
 ## Test gates
@@ -66,6 +80,8 @@ Production firmware work must not start until every mandatory item below is gree
 - [ ] Congestion scenario defined.
 - [ ] Queue/pool exhaustion scenarios defined.
 - [ ] Store-and-forward scenario defined.
+- [ ] No-SD cold-boot/reboot/queue-recovery scenario defined.
+- [ ] Interrupted-store-write/power-cut recovery scenario defined.
 - [ ] Hybrid ESP-NOW/LoRa scenario defined before enabling that feature.
 
 ## Release safety
@@ -74,3 +90,4 @@ Production firmware work must not start until every mandatory item below is gree
 - [ ] Recovery flashing path defined before public field testing.
 - [ ] No OTA until signing, integrity and rollback design are reviewed.
 - [ ] A compile-only result is never labelled hardware validated.
+- [ ] STABLE promotion requires the no-microSD acceptance gate.
