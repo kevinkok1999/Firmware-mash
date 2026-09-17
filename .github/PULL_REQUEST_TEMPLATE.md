@@ -13,9 +13,11 @@ List commands/scenarios and actual results. Do not list planned tests as complet
 
 ## Resource impact
 
-- RAM:
-- Flash:
-- Queue/pool impact:
+- Application flash delta:
+- Internal RAM delta / high-water mark:
+- PSRAM impact:
+- Persistent-storage/partition impact:
+- Queue/pool capacity impact:
 - LoRa airtime/control traffic:
 - Power impact if measured:
 
@@ -23,9 +25,20 @@ List commands/scenarios and actual results. Do not list planned tests as complet
 
 - [ ] HybridRouter remains the only routing authority.
 - [ ] LoRa-only operation remains available.
+- [ ] Core functionality remains independent of microSD.
 - [ ] New queues/tables/retries are bounded.
 - [ ] Failure/rollback behavior is documented.
 - [ ] No transport callback directly owns routing state.
+- [ ] Generated build output is not committed.
+- [ ] Dependency lockfiles required for reproducibility remain tracked.
+
+## Persistence / power-loss checks
+
+Complete when this change touches durable state:
+
+- [ ] Power loss cannot corrupt identity/configuration.
+- [ ] Interrupted message-store operations have deterministic recovery.
+- [ ] Flash write frequency/wear impact is bounded or measured.
 
 ## Security and licensing
 
