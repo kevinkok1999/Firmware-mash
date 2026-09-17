@@ -10,6 +10,8 @@ This directory is the design and evidence source of truth before production firm
 - `ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` — master execution contract for a coding agent.
 - `ENERGY_MANAGEMENT_CONTRACT.md` — EnergyManager, power-state, optional harvester-provider and RF isolation contract.
 - `IP_GATEWAY_FEDERATION_CONTRACT.md` — Wi-Fi/cellular IP backhaul, gateway discovery/federation and same-chat transport-continuity contract.
+- `IP_GATEWAY_IMPLEMENTATION_CHECKLIST.md` — concrete post-baseline implementation checklist for IP/gateway work.
+- `GATEWAY_SECURITY_REQUIREMENTS.md` — hard security/privacy/resource gates before public federation.
 - `UI_UX_CONTRACT.md` — smartphone-like T-Deck user experience.
 - `UI_IMPLEMENTATION_MAP.md` — exact screens, navigation, UI state mapping and event bindings.
 - `PACKET_DELIVERY_CONTRACT.md` — PacketId, ACK, delayed-delivery and exactly-once presentation semantics.
@@ -30,6 +32,7 @@ This directory is the design and evidence source of truth before production firm
 - `REPOSITORY_LAYOUT.md` — source placement rules after the baseline gate unlocks production code.
 - `ENERGY_MANAGEMENT_CONTRACT.md` — energy state, provider boundary and integration semantics.
 - `IP_GATEWAY_FEDERATION_CONTRACT.md` — IP bearer, gateway, discovery, federation, security and fallback semantics.
+- `GATEWAY_SECURITY_REQUIREMENTS.md` — Internet-facing authentication/privacy/resource constraints.
 
 ## Foundation and reproducibility
 
@@ -68,6 +71,7 @@ Do not duplicate the same normative rule across multiple documents unless one fi
 - routing semantics -> `ROUTING_SPEC_DRAFT.md`;
 - energy-management/provider semantics -> `ENERGY_MANAGEMENT_CONTRACT.md`;
 - IP/gateway/federation semantics -> `IP_GATEWAY_FEDERATION_CONTRACT.md`;
+- gateway security/privacy/resource semantics -> `GATEWAY_SECURITY_REQUIREMENTS.md`;
 - packet/delivery semantics -> `PACKET_DELIVERY_CONTRACT.md`;
 - wire/layering semantics -> `WIRE_PROTOCOL_CONTRACT.md`;
 - storage/no-SD requirements -> `STANDALONE_TDECK_REQUIREMENTS.md`;
@@ -77,6 +81,6 @@ Do not duplicate the same normative rule across multiple documents unless one fi
 - resource limits -> `RESOURCE_BUDGET.md`;
 - user-facing stable release requirement -> `USER_RELEASE_CONTRACT.md`;
 - test evidence -> `TESTING.md` / `TEST_TRACEABILITY.md`;
-- implementation sequence -> `IMPLEMENTATION_BLUEPRINT.md` / `ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` / `ROADMAP.md`.
+- implementation sequence -> `IMPLEMENTATION_BLUEPRINT.md` / `ONE_SHOT_IMPLEMENTATION_RUNBOOK.md` / `IP_GATEWAY_IMPLEMENTATION_CHECKLIST.md` / `ROADMAP.md`.
 
 When two normative documents disagree, stop and resolve the conflict with an ADR before production code is merged.
