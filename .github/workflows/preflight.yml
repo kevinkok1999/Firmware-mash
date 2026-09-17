@@ -25,6 +25,8 @@ jobs:
             README.md
             SECURITY.md
             CONTRIBUTING.md
+            .github/workflows/coding-readiness.yml
+            .github/workflows/release-package.yml
             docs/README.md
             docs/REPOSITORY_LAYOUT.md
             docs/RESOURCE_BUDGET.md
@@ -54,6 +56,7 @@ jobs:
             docs/PREBUILD_REVIEW_2026-09-17.md
             docs/REAL_WORLD_COMPETITOR_REVIEW_2026-09-17.md
             docs/CONTROLLER_REVIEW_2026-09-17.md
+            docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md
             docs/ENERGY_INTEGRATION_REVIEW_2026-09-17.md
             docs/IP_GATEWAY_REVIEW_2026-09-17.md
             docs/STANDALONE_TDECK_REQUIREMENTS.md
@@ -78,6 +81,15 @@ jobs:
           for f in "${required[@]}"; do
             test -s "$f" || { echo "Missing or empty required file: $f"; exit 1; }
           done
+
+          grep -q '^controller_status=READY_FOR_CODING$' docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md || {
+            echo 'Final controller review is not READY_FOR_CODING.' >&2
+            exit 1
+          }
+          grep -q '^unresolved_architecture_contradictions=0$' docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md || {
+            echo 'Final controller review reports unresolved architecture contradictions.' >&2
+            exit 1
+          }
 
       - name: Reject obvious committed secret/private-key files
         shell: bash
