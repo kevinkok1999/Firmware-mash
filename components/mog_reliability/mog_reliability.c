@@ -43,8 +43,12 @@ int mog_reliability_track(mog_reliability_t *rel, mog_message_key_t key,
                           uint8_t max_attempts, uint32_t retry_base_ms)
 {
     size_t i;
+    /* mog_time_reached32() is only unambiguous for deadlines less than half
+     * the uint32_t time space away. Reject larger retry bases up front so all
+     * derived deadlines preserve that invariant. */
     if (rel == NULL || !mog_message_key_is_valid(key) || max_attempts == 0u ||
-        retry_base_ms == 0u) return MOG_REL_ERR_ARG;
+        retry_base_ms == 0u || retry_base_ms > (uint32_t)INT32_MAX)
+        return MOG_REL_ERR_ARG;
     if (find_mut(rel, key) != NULL) return MOG_REL_OK;
     if (rel->count >= MOG_RELIABILITY_MAX_TRACKED) return MOG_REL_ERR_FULL;
     for (i = 0; i < MOG_RELIABILITY_MAX_TRACKED; ++i) {
@@ -80,8 +84,10 @@ int mog_reliability_note_send(mog_reliability_t *rel, mog_message_key_t key,
     e->attempts++;
     shift = e->attempts > 1u ? (uint32_t)e->attempts - 1u : 0u;
     if (shift > 6u) shift = 6u;
-    delay = e->retry_base_ms > (UINT32_MAX >> shift) ? UINT32_MAX
-                                                     : e->retry_base_ms << shift;
+    if (e->retry_base_ms > ((uint32_t)INT32_MAX >> shift))
+        delay = (uint32_t)INT32_MAX;
+    else
+        delay = e->retry_base_ms << shift;
     e->next_retry_ms = now_ms + delay;
     return MOG_REL_OK;
 }
