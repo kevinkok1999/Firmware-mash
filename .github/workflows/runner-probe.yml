@@ -1,0 +1,36 @@
+name: runner-probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/runner-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-24-04:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Prove runner execution
+        run: |
+          set -euo pipefail
+          echo "runner=os:${{ runner.os }} arch:${{ runner.arch }}"
+          uname -a
+          docker --version
+          git --version
+
+  ubuntu-22-04:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Prove runner execution
+        run: |
+          set -euo pipefail
+          echo "runner=os:${{ runner.os }} arch:${{ runner.arch }}"
+          uname -a
+          docker --version
+          git --version
