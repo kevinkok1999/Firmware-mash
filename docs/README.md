@@ -9,6 +9,7 @@ This directory is the design and evidence source of truth before production firm
 - `ROUTING_SPEC_DRAFT.md` — transport-neutral routing and failover behavior.
 - `STANDALONE_TDECK_REQUIREMENTS.md` — no-microSD, internal-storage and recovery requirements.
 - `RESOURCE_BUDGET.md` — flash/RAM/PSRAM/persistence/OTA budget rules.
+- `USER_RELEASE_CONTRACT.md` — one-flash stable-user requirement; users are not the engineering test harness.
 - `ROADMAP.md` — staged implementation order.
 - `PREBUILD_CHECKLIST.md` — hard gate before production source.
 
@@ -48,6 +49,7 @@ Do not duplicate the same normative rule across multiple documents unless one fi
 - routing semantics -> `ROUTING_SPEC_DRAFT.md`;
 - storage/no-SD requirements -> `STANDALONE_TDECK_REQUIREMENTS.md`;
 - resource limits -> `RESOURCE_BUDGET.md`;
+- user-facing stable release requirement -> `USER_RELEASE_CONTRACT.md`;
 - test evidence -> `TESTING.md`;
 - implementation sequence -> `ROADMAP.md` / build runbooks.
 
