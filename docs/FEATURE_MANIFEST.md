@@ -11,6 +11,7 @@ This is the single checklist of intended product capabilities. It prevents a one
 - Stock LILYGO T-Deck Plus target.
 - Core operation with no microSD installed.
 - Core operation with no external energy-harvesting hardware installed.
+- Core operation with no Internet connectivity.
 - Local display, keyboard, trackball/touch operation without a phone.
 - Internal identity/config persistence.
 - Internal durable pending-message storage.
@@ -19,6 +20,7 @@ This is the single checklist of intended product capabilities. It prevents a one
 ### Messaging
 
 - Direct messages/conversations.
+- Conversation identity independent from transport/path.
 - One logical PacketId per message.
 - End-to-end delivery evidence distinct from link TX success.
 - Automatic bounded retries.
@@ -43,6 +45,7 @@ This is the single checklist of intended product capabilities. It prevents a one
 - Path-scoped route-error invalidation.
 - Stable PacketId across failover.
 - Hysteresis to avoid route flapping.
+- Heterogeneous route segments may be represented without changing application identity.
 
 ### Store-and-forward / delayed delivery
 
@@ -68,11 +71,12 @@ This is the single checklist of intended product capabilities. It prevents a one
 - Smartphone-like shell and navigation.
 - Home, Messages, Contacts, Network, Settings.
 - Familiar conversation list and chat view.
+- Same chat remains continuous across all available routes/transports.
 - Compact status bar with battery/network state.
 - Simple human-readable network status.
 - Human-readable energy-saving/survival indication when relevant.
 - Optional Advanced diagnostics.
-- No required transport, hop, route, retry, RF or power-electronics tuning by normal users.
+- No required transport, hop, route, retry, RF, gateway or power-electronics tuning by normal users.
 
 ### Reliability/health
 
@@ -101,6 +105,25 @@ This is the single checklist of intended product capabilities. It prevents a one
 
 ESP-NOW is promoted to STABLE only after repeatable real T-Deck hardware evidence.
 
+### IP backhaul / gateway federation
+
+- One `mog_transport_ip` logical adapter.
+- Wi-Fi and cellular treated as bearer providers below the IP adapter, not separate chats/routing engines.
+- Stock T-Deck Wi-Fi backhaul support after real hardware validation.
+- Optional cellular PPP provider only for selected compatible modem hardware.
+- Same conversation and PacketId across LoRa/ESP-NOW/IP transitions.
+- `GatewayManager` and bounded `GatewayDiscovery` provide reachability/capability evidence to HybridRouter.
+- Authenticated/expiring gateway advertisements.
+- Outbound authenticated federation sessions for handhelds.
+- Multiple bootstrap/peer entrypoints; no single mandatory cloud server.
+- Loss of IP/gateway path automatically falls back to other valid paths or WAITING_ROUTE.
+- Internet recovery makes queued messages retry-eligible without a second Send press.
+- End-to-end user payload remains protected across gateways.
+- Gateway/session/advertisement queues and rate limits are bounded.
+- High-level user policy only: Auto / Off-grid only / Internet assist.
+
+IP/gateway features remain BETA until real T-Deck Wi-Fi, multi-gateway failover and security/resource tests pass. Cellular capability remains target-specific and hardware-evidence-gated.
+
 ## LAB capabilities
 
 ### Ambient RF Energy Assist
@@ -118,6 +141,7 @@ Ambient RF Energy Assist is an optional energy source, not a communications tran
 ### Other LAB capabilities
 
 - Wi-Fi Aware/NAN transport research.
+- Advanced NAT traversal/direct Internet peer experiments after the first gateway federation works.
 - TDMA/regional/hierarchical routing experiments if scale evidence justifies them.
 - RIS/passive RF-assist advisory integration.
 - External compatible backscatter transport research.
@@ -126,7 +150,10 @@ LAB features must be removable and cannot become dependencies of CFG-LORA-STABLE
 
 ## Explicit non-features / forbidden assumptions
 
-- No arbitrary third-party Wi-Fi routers used as unconfigured relays.
+- No arbitrary third-party Wi-Fi routers used as unconfigured Firmware-mash relays.
+- No 4G/5G mast used without legitimate modem/subscription/network access.
+- No claim that an Internet gateway preserves off-grid operation; IP is an optional path only.
+- No single mandatory cloud server owning chats or message history.
 - No magical amplification of LoRa by unrelated ambient RF.
 - No firmware-only ambient-backscatter claim on stock T-Deck hardware.
 - No firmware-only ambient-RF energy harvesting claim on stock T-Deck hardware.
@@ -134,15 +161,16 @@ LAB features must be removable and cannot become dependencies of CFG-LORA-STABLE
 - No unvalidated loading/sharing of the tuned LoRa antenna for energy harvesting.
 - No microSD requirement for core messaging.
 - No manual per-message route selection in normal UI.
-- No unlimited flooding/retries/path storage.
+- No unlimited flooding/retries/path/gateway storage.
 - No custom cryptographic primitive invented by Firmware-mash.
 - No claim that compile/simulator success equals hardware validation.
+- No guaranteed 30 km/300 km/global availability claim without real participating connectivity/gateway evidence.
 
 ## One-flash release target
 
 The intended normal-user outcome is one approved T-Deck Plus release package. A user flashes it, performs only normal onboarding, and uses the advertised STABLE features. Engineering validation remains a project responsibility, not an end-user workflow.
 
-The same package may contain disabled LAB provider interfaces, but no normal user is told that RF harvesting works unless compatible hardware is actually present and validated.
+The same package may contain disabled BETA/LAB interfaces, but no normal user is told that cellular, public federation or RF harvesting works unless matching hardware/network evidence exists.
 
 ## Implementation completeness rule
 
@@ -152,5 +180,7 @@ A one-shot coding pass is complete only when every STABLE feature above has eith
 2. an explicit documented blocker based on measured baseline/hardware facts.
 
 The EnergyManager software layer is part of this implementation completeness rule. The physical ambient-RF harvester is not: its interface/simulator path is implemented, while actual hardware promotion remains evidence-gated.
+
+Approved BETA architecture such as IP backhaul/gateway federation must retain its implementation seam/tests even when not yet promoted to STABLE.
 
 A feature may not simply disappear because implementation became difficult.
