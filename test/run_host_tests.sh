@@ -20,7 +20,15 @@ include_flags=(-I"${repo_root}/components/mog_message_store/include")
   "${repo_root}/test/host/test_mog_store_journal.c" \
   -o "${build_dir}/test_mog_store_journal"
 
+"$cc_bin" "${common_flags[@]}" "${include_flags[@]}" \
+  "${repo_root}/components/mog_message_store/mog_store_snapshot.c" \
+  "${repo_root}/components/mog_message_store/mog_store_journal.c" \
+  "${repo_root}/components/mog_message_store/mog_store_state.c" \
+  "${repo_root}/test/host/test_mog_store_state.c" \
+  -o "${build_dir}/test_mog_store_state"
+
 "${build_dir}/test_mog_store_snapshot"
 "${build_dir}/test_mog_store_journal"
+"${build_dir}/test_mog_store_state"
 
 echo "Firmware-mash host tests: PASS"
