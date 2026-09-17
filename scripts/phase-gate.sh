@@ -56,7 +56,15 @@ phase1() {
   require_file test/host/test_mog_store_snapshot.c
   require_file test/host/test_mog_store_journal.c
   require_file test/host/test_mog_store_state.c
+  require_file test/host/test_mog_bramble_adapter.c
+  require_file test/host/bramble_shim/msg_store.h
+  require_file test/host/bramble_shim/msg_store_spiffs.h
+  require_file test/host/bramble_shim/sdkconfig.h
+  require_file test/host/bramble_shim/esp_heap_caps.h
+  require_file test/host/bramble_shim/esp_spiffs.h
+  require_file test/host/bramble_shim/esp_log.h
   require_file test/run_host_tests.sh
+
   require_file scripts/sync-foundation.sh
   require_file scripts/apply-overlay.sh
   require_file scripts/build-tdeck.sh
