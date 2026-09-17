@@ -35,7 +35,6 @@ static stored_msg_t *s_durable_records = NULL;
 static mog_store_state_t s_state;
 static stored_msg_t s_replay_scratch;
 static uint64_t s_generation = 0;
-static uint64_t s_snapshot_watermark = 0;
 static uint64_t s_next_sequence = 1;
 static uint32_t s_ops_since_checkpoint = 0;
 
@@ -65,7 +64,6 @@ static int find_uid(uint32_t uid) {
 
 static void reset_runtime_metadata(void) {
     s_generation = 0;
-    s_snapshot_watermark = 0;
     s_next_sequence = 1;
     s_ops_since_checkpoint = 0;
 }
@@ -119,7 +117,6 @@ static int recover_state(void) {
     }
 
     s_generation = info.snapshot_generation;
-    s_snapshot_watermark = info.snapshot_watermark;
     s_next_sequence = info.next_sequence;
     if (s_next_sequence == 0) {
         ESP_LOGE(TAG, "invalid next journal sequence");
@@ -163,7 +160,6 @@ static int checkpoint_state(const mog_store_state_t *source, uint64_t last_seque
         return -1;
     }
     s_generation = generation;
-    s_snapshot_watermark = last_sequence;
     s_ops_since_checkpoint = 0;
     return 0;
 }
@@ -286,11 +282,17 @@ int msg_store_spiffs_update(int from_end, const stored_msg_t *msg) {
         return -1;
     }
 
+    /* Bramble deliberately zeroes restored RAM timestamps because they came
+     * from the previous boot's uptime clock. Preserve the durable timestamp
+     * across later status/route updates exactly as the original backend did. */
+    stored_msg_t durable = *msg;
+    durable.timestamp_s = current->timestamp_s;
+
     /* from_end remains part of the stable Bramble API, but UID is now the
      * durable lookup key. This removes the old positional/in-place rewrite
      * hazard while preserving caller compatibility. */
     (void)from_end;
-    return append_put(msg);
+    return append_put(&durable);
 }
 
 int msg_store_spiffs_get_count(void) {
