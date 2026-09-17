@@ -49,9 +49,12 @@ phase1() {
   require_file components/mog_message_store/mog_store_snapshot.c
   require_file components/mog_message_store/include/mog_store_journal.h
   require_file components/mog_message_store/mog_store_journal.c
+  require_file components/mog_message_store/include/mog_store_state.h
+  require_file components/mog_message_store/mog_store_state.c
 
   require_file test/host/test_mog_store_snapshot.c
   require_file test/host/test_mog_store_journal.c
+  require_file test/host/test_mog_store_state.c
   require_file test/run_host_tests.sh
   require_file scripts/sync-foundation.sh
   require_file scripts/apply-overlay.sh
