@@ -6,41 +6,48 @@
 #include <unistd.h>
 
 typedef struct {
-    uint32_t seen;
+    uint32_t id;
+    char text[16];
+} test_record_t;
+
+typedef struct {
+    unsigned calls;
     uint64_t last_sequence;
-    uint32_t last_key;
-    char last_payload[32];
+    uint32_t last_uid;
+    mog_store_journal_op_t last_op;
+    test_record_t last_record;
 } replay_state_t;
 
-static int on_entry(const mog_store_journal_entry_t *entry, void *ctx) {
+static int on_replay(mog_store_journal_op_t op,
+                     uint64_t sequence,
+                     uint32_t uid,
+                     const void *payload,
+                     uint32_t payload_size,
+                     void *ctx) {
     replay_state_t *state = (replay_state_t *)ctx;
-    assert(entry != NULL);
-    assert(state != NULL);
-    state->seen++;
-    state->last_sequence = entry->sequence;
-    state->last_key = entry->key;
-    memset(state->last_payload, 0, sizeof(state->last_payload));
-    if (entry->payload && entry->payload_len > 0) {
-        const size_t n = entry->payload_len < sizeof(state->last_payload) - 1
-                             ? entry->payload_len
-                             : sizeof(state->last_payload) - 1;
-        memcpy(state->last_payload, entry->payload, n);
+    state->calls++;
+    state->last_sequence = sequence;
+    state->last_uid = uid;
+    state->last_op = op;
+    if (op == MOG_STORE_JOURNAL_PUT) {
+        assert(payload != NULL);
+        assert(payload_size == sizeof(test_record_t));
+        memcpy(&state->last_record, payload, sizeof(test_record_t));
+    } else {
+        assert(payload == NULL);
+        assert(payload_size == 0);
     }
     return 0;
 }
 
-static void truncate_file(const char *path, off_t size) {
-    assert(truncate(path, size) == 0);
-}
-
-static void corrupt_last_byte(const char *path) {
+static void corrupt_byte(const char *path, long offset) {
     FILE *f = fopen(path, "r+b");
     assert(f != NULL);
-    assert(fseek(f, -1, SEEK_END) == 0);
-    int byte = fgetc(f);
+    assert(fseek(f, offset, SEEK_SET) == 0);
+    const int byte = fgetc(f);
     assert(byte != EOF);
-    assert(fseek(f, -1, SEEK_CUR) == 0);
-    assert(fputc(byte ^ 0x7f, f) != EOF);
+    assert(fseek(f, offset, SEEK_SET) == 0);
+    assert(fputc(byte ^ 0x5a, f) != EOF);
     assert(fflush(f) == 0);
     assert(fsync(fileno(f)) == 0);
     assert(fclose(f) == 0);
@@ -50,73 +57,74 @@ int main(void) {
     const char *path = "/tmp/mog-store-journal.bin";
     unlink(path);
 
-    const char first[] = "message-one";
-    const char second[] = "message-two";
+    const test_record_t a = {1, "alpha"};
+    const test_record_t b = {2, "beta"};
 
-    assert(mog_store_journal_append(path, 1, MOG_JOURNAL_OP_UPSERT, 11,
-                                    first, sizeof(first)) == MOG_JOURNAL_OK);
-    assert(mog_store_journal_append(path, 2, MOG_JOURNAL_OP_UPSERT, 22,
-                                    second, sizeof(second)) == MOG_JOURNAL_OK);
+    assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_PUT, 1, 100, &a,
+                                    sizeof(a), sizeof(a)) == MOG_JOURNAL_OK);
+    assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_PUT, 2, 101, &b,
+                                    sizeof(b), sizeof(b)) == MOG_JOURNAL_OK);
+    assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_DELETE, 3, 100, NULL,
+                                    0, sizeof(a)) == MOG_JOURNAL_OK);
 
+    test_record_t scratch;
     replay_state_t state = {0};
-    mog_store_journal_scan_info_t info = {0};
-    assert(mog_store_journal_replay(path, 128, on_entry, &state, &info) == MOG_JOURNAL_OK);
-    assert(state.seen == 2);
-    assert(state.last_sequence == 2);
-    assert(state.last_key == 22);
-    assert(strcmp(state.last_payload, second) == 0);
-    assert(info.entry_count == 2);
-    assert(info.last_sequence == 2);
-    assert(!info.tail_damaged);
-
-    /* Add a DELETE event with no payload. */
-    assert(mog_store_journal_append(path, 3, MOG_JOURNAL_OP_DELETE, 11,
-                                    NULL, 0) == MOG_JOURNAL_OK);
-    memset(&state, 0, sizeof(state));
-    assert(mog_store_journal_replay(path, 128, on_entry, &state, &info) == MOG_JOURNAL_OK);
-    assert(state.seen == 3);
+    mog_store_journal_scan_info_t info;
+    assert(mog_store_journal_replay(path, sizeof(a), 0, &scratch, sizeof(scratch),
+                                    on_replay, &state, &info) == MOG_JOURNAL_OK);
+    assert(state.calls == 3);
     assert(state.last_sequence == 3);
-    assert(info.entry_count == 3);
+    assert(state.last_uid == 100);
+    assert(state.last_op == MOG_STORE_JOURNAL_DELETE);
+    assert(info.valid_entries == 3);
+    assert(info.max_sequence == 3);
+    assert(!info.recovered_partial);
 
-    /* Simulate a torn fourth entry: replay must expose only the three good entries. */
-    const long good_size = (long)info.valid_bytes;
-    assert(mog_store_journal_append(path, 4, MOG_JOURNAL_OP_UPSERT, 44,
-                                    second, sizeof(second)) == MOG_JOURNAL_OK);
-    truncate_file(path, good_size + 10);
+    /* Snapshot watermark semantics: validate old entries, replay only newer. */
+    memset(&state, 0, sizeof(state));
+    assert(mog_store_journal_replay(path, sizeof(a), 1, &scratch, sizeof(scratch),
+                                    on_replay, &state, &info) == MOG_JOURNAL_OK);
+    assert(state.calls == 2);
+    assert(state.last_sequence == 3);
+
+    /* A torn tail preserves the complete prefix and reports its safe truncation point. */
+    const size_t safe_bytes = info.valid_bytes;
+    assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_PUT, 4, 102, &a,
+                                    sizeof(a), sizeof(a)) == MOG_JOURNAL_OK);
+    FILE *f = fopen(path, "r+b");
+    assert(f != NULL);
+    assert(fseek(f, -5, SEEK_END) == 0);
+    const long torn_size = ftell(f);
+    assert(torn_size > 0);
+    assert(fclose(f) == 0);
+    assert(truncate(path, torn_size) == 0);
 
     memset(&state, 0, sizeof(state));
-    assert(mog_store_journal_replay(path, 128, on_entry, &state, &info) == MOG_JOURNAL_OK);
-    assert(state.seen == 3);
-    assert(info.entry_count == 3);
-    assert(info.last_sequence == 3);
-    assert(info.tail_damaged);
-    assert((long)info.valid_bytes == good_size);
+    assert(mog_store_journal_replay(path, sizeof(a), 0, &scratch, sizeof(scratch),
+                                    on_replay, &state, &info) == MOG_JOURNAL_RECOVERED_PARTIAL);
+    assert(state.calls == 3);
+    assert(info.valid_entries == 3);
+    assert(info.max_sequence == 3);
+    assert(info.recovered_partial);
+    assert(info.valid_bytes == safe_bytes);
+    assert(mog_store_journal_truncate(path, info.valid_bytes) == MOG_JOURNAL_OK);
 
-    /* Repair truncates exactly to the last committed event. */
-    assert(mog_store_journal_repair_tail(path, 128, &info) == MOG_JOURNAL_OK);
-    assert(!info.tail_damaged);
+    /* A CRC-corrupted last committed entry is rejected; earlier state survives. */
+    assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_PUT, 4, 102, &a,
+                                    sizeof(a), sizeof(a)) == MOG_JOURNAL_OK);
+    corrupt_byte(path, (long)safe_bytes + 40 + 1);
     memset(&state, 0, sizeof(state));
-    assert(mog_store_journal_replay(path, 128, on_entry, &state, &info) == MOG_JOURNAL_OK);
-    assert(state.seen == 3);
-    assert(!info.tail_damaged);
+    assert(mog_store_journal_replay(path, sizeof(a), 0, &scratch, sizeof(scratch),
+                                    on_replay, &state, &info) == MOG_JOURNAL_RECOVERED_PARTIAL);
+    assert(state.calls == 3);
+    assert(info.max_sequence == 3);
+    assert(info.valid_bytes == safe_bytes);
 
-    /* Payload corruption of the last entry is treated as a damaged tail. */
-    assert(mog_store_journal_append(path, 4, MOG_JOURNAL_OP_UPSERT, 44,
-                                    second, sizeof(second)) == MOG_JOURNAL_OK);
-    corrupt_last_byte(path);
-    memset(&state, 0, sizeof(state));
-    assert(mog_store_journal_replay(path, 128, on_entry, &state, &info) == MOG_JOURNAL_OK);
-    assert(state.seen == 3);
-    assert(info.tail_damaged);
-    assert(info.last_sequence == 3);
-
-    assert(mog_store_journal_repair_tail(path, 128, &info) == MOG_JOURNAL_OK);
-
-    /* Invalid arguments are rejected rather than written. */
-    assert(mog_store_journal_append(path, 0, MOG_JOURNAL_OP_UPSERT, 1,
-                                    first, sizeof(first)) == MOG_JOURNAL_ERR_ARG);
-    assert(mog_store_journal_append(path, 5, MOG_JOURNAL_OP_DELETE, 1,
-                                    first, sizeof(first)) == MOG_JOURNAL_ERR_ARG);
+    /* Invalid append contracts fail closed. */
+    assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_PUT, 0, 1, &a,
+                                    sizeof(a), sizeof(a)) == MOG_JOURNAL_ERR_ARG);
+    assert(mog_store_journal_append(path, MOG_STORE_JOURNAL_DELETE, 5, 1, &a,
+                                    sizeof(a), sizeof(a)) == MOG_JOURNAL_ERR_ARG);
 
     unlink(path);
     puts("test_mog_store_journal: PASS");
