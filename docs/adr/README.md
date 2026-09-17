@@ -9,6 +9,7 @@ ADRs capture decisions that shape multiple modules or are expensive to reverse.
 - `0003-feature-stability-and-flags.md` — STABLE/BETA/LAB isolation and LoRa-only regression target.
 - `0004-logical-packet-identity.md` — one logical PacketId across transports and retries.
 - `0005-standalone-internal-storage.md` — core operation must not depend on microSD.
+- `0006-energy-manager-and-rf-harvest-isolation.md` — one EnergyManager owns device energy policy; RF harvesting is an optional external-hardware provider, never a routing transport.
 
 ## When to create an ADR
 
@@ -16,6 +17,7 @@ Create or supersede an ADR when changing:
 
 - foundation/fork strategy;
 - routing ownership or protocol model;
+- device energy-policy ownership or harvesting/provider boundary;
 - packet/wire compatibility;
 - persistence model or partition strategy;
 - security boundary or cryptographic construction;
