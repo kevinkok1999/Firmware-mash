@@ -61,6 +61,18 @@ int main(void)
     assert(mog_reliability_find(&rel, key4)->state == MOG_MSG_FAILED_PERMANENT);
     assert(mog_reliability_sweep_exhausted(&rel, 2026u, &failed) == MOG_REL_OK && failed == 0u);
 
+    /* Runtime tracking is bounded but must not permanently fill after 32
+     * completed messages. Only terminal entries may be reclaimed, and the
+     * caller does so only after MessageStore durably records that terminal
+     * state. Live work must never be silently evicted. */
+    assert(mog_reliability_forget_terminal(&rel, key2) == MOG_REL_ERR_STATE);
+    assert(mog_reliability_forget_terminal(&rel, key) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, key) == NULL);
+    assert(rel.count == 3u);
+    assert(mog_reliability_forget_terminal(&rel, key) == MOG_REL_ERR_NOT_FOUND);
+    assert(mog_reliability_track(&rel, key, 3u, 100u) == MOG_REL_OK);
+    assert(rel.count == 4u);
+
     puts("mog_reliability: PASS");
     return 0;
 }
