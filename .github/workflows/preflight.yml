@@ -27,6 +27,7 @@ jobs:
             CONTRIBUTING.md
             docs/README.md
             docs/REPOSITORY_LAYOUT.md
+            docs/RESOURCE_BUDGET.md
             docs/ARCHITECTURE.md
             docs/API_CONTRACTS.md
             docs/ROUTING_SPEC_DRAFT.md
