@@ -54,13 +54,18 @@ phase1() {
   require_file test/host/test_mog_store_journal.c
   require_file test/run_host_tests.sh
   require_file scripts/sync-foundation.sh
+  require_file scripts/apply-overlay.sh
+  require_file scripts/build-tdeck.sh
 
   bash test/run_host_tests.sh
 
-  if [[ "${MOG_SKIP_FOUNDATION_SYNC:-0}" != "1" ]]; then
+  if [[ "${MOG_SKIP_TARGET_BUILD:-0}" != "1" ]]; then
+    bash scripts/build-tdeck.sh
+  elif [[ "${MOG_SKIP_FOUNDATION_SYNC:-0}" != "1" ]]; then
+    echo "NOTE: target build skipped; foundation + overlay sync still verified"
     bash scripts/sync-foundation.sh
   else
-    echo "NOTE: foundation sync skipped by MOG_SKIP_FOUNDATION_SYNC=1"
+    echo "NOTE: target build and foundation sync explicitly skipped"
   fi
 
   echo "PHASE 1 PASS"
@@ -104,8 +109,6 @@ phase2() {
   require_file docs/BUILD_CONFIG_MATRIX.md
   require_file docs/TEST_TRACEABILITY.md
 
-  # Phase 2 must eventually provide this runner; keeping the gate red until it
-  # exists prevents a documentation-only implementation from being promoted.
   require_file test/run_phase2_tests.sh
   bash test/run_phase2_tests.sh
 
@@ -123,12 +126,8 @@ phase3() {
   require_file scripts/release-package.sh
   require_file test/run_phase3_tests.sh
 
-  # Product/release tests must pass before a package may be generated.
   bash test/run_phase3_tests.sh
 
-  # STABLE-specific physical evidence is intentionally checked in the release
-  # workflow because BETA/LAB can be built earlier without pretending hardware
-  # validation exists.
   echo "PHASE 3 PASS"
 }
 
