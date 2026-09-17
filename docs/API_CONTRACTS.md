@@ -19,6 +19,37 @@ typedef enum {
 
 A logical packet gets one `mog_packet_id_t` before route selection. Transport-specific sequence/frame IDs never replace it.
 
+## Transport capability flags
+
+Capabilities are transport facts, not separate routing engines.
+
+Conceptual flags include:
+
+```text
+MOG_CAP_DIRECT
+MOG_CAP_BROADCAST
+MOG_CAP_RSSI
+MOG_CAP_SNR
+MOG_CAP_ESPNOW_NORMAL
+MOG_CAP_ESPNOW_LR
+MOG_CAP_LOW_POWER
+MOG_CAP_DISCOVERY
+```
+
+For ESP-NOW, Normal and Long Range are modes/capabilities of the same `MOG_LINK_ESPNOW` adapter. The user does not select them per message.
+
+Conceptual ESP-NOW mode state:
+
+```c
+typedef enum {
+    MOG_ESPNOW_MODE_AUTO = 0,
+    MOG_ESPNOW_MODE_NORMAL,
+    MOG_ESPNOW_MODE_LR,
+} mog_espnow_mode_t;
+```
+
+`AUTO` is the normal policy-facing mode. Actual support for LR must be confirmed against the pinned ESP-IDF/target before enabling it in a stable build.
+
 ## Link metrics
 
 ```c
@@ -36,7 +67,7 @@ typedef struct {
 } mog_link_metrics_t;
 ```
 
-Metrics are observations, not direct routing decisions.
+Metrics are observations, not direct routing decisions. Metrics that do not apply to a transport are marked unavailable/unknown rather than fabricated.
 
 ## TransportAdapter
 
@@ -71,15 +102,20 @@ Conceptual event types:
 ```text
 LINK_RX
 LINK_TX_RESULT
+LINK_RECOVERED
 NEIGHBOR_UP
 NEIGHBOR_DOWN
 ROUTE_DISCOVERED
+ROUTE_AVAILABLE
 ROUTE_FAILED
+TRANSPORT_RECOVERED
 DELIVERY_ACK
 DELIVERY_TIMEOUT
 STORE_RETRY
 RF_METRICS_CHANGED
 ```
+
+`LINK_RECOVERED`, `NEIGHBOR_UP`, `ROUTE_DISCOVERED`, `ROUTE_AVAILABLE` and `TRANSPORT_RECOVERED` may make a durable `WAITING_ROUTE` message immediately retry-eligible. They never bypass ReliabilityManager, AirtimeManager or bounded anti-storm backoff/jitter.
 
 All events use a bounded queue/pool. Overflow increments an observable health counter and follows a documented drop/backpressure policy.
 
@@ -187,13 +223,14 @@ CRITICAL does not automatically duplicate traffic. A second independent path is 
 
 ## Dedup
 
-`seen(PacketId)` is evaluated before application delivery. A duplicate arriving by another path is not shown twice, but may contribute link/path evidence.
+`seen(PacketId)` is evaluated before application delivery. A duplicate arriving by another path is not shown twice, but may contribute link/path evidence. The destination may re-ACK a duplicate when required to complete sender-side delivery state.
 
 ## MessageStore
 
 Conceptual states:
 
 ```text
+CREATED
 READY
 SENDING
 WAITING_ACK
@@ -201,6 +238,7 @@ WAITING_ROUTE
 DEFERRED
 DELIVERED
 EXPIRED
+FAILED_PERMANENT
 ```
 
 Storage is bounded, encrypted at the appropriate security boundary, TTL-controlled and uses deterministic priority/eviction behavior.
