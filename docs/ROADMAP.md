@@ -32,28 +32,53 @@ Add ESP-NOW as an optional transport adapter with dynamic peer cache, link metri
 
 Integrate the technical stack into a simple phone-style interface with Home, Messages, Contacts, Network and Settings. Normal users must be able to open a conversation, type on the T-Deck keyboard and send without choosing transport, route, retry count or next hop. Queued messages remain visible and automatically transition to Delivered when connectivity returns. Energy saving/survival state uses simple language; raw power electronics remain Advanced-only.
 
+Conversation identity is transport-independent: a contact has one continuous chat even when consecutive messages use different physical paths.
+
 ## Phase 5C — Ambient RF Energy Assist software seam
 
 Implement the optional `mog_energy_rf_harvest` provider boundary, simulator/mock provider and Advanced diagnostics hooks in the same code project, but keep the real provider disabled unless compatible external hardware exists. Model optional harvested-power and reservoir/TX-ready evidence without inventing measurements.
 
 Physical integration remains LAB until a real rectenna/harvester-PMIC/storage design is measured. Preferred assumption: separate harvesting antenna/rectenna. Shared-antenna operation requires explicit RF isolation/desense/insertion-loss evidence.
 
+## Phase 5D — IP backhaul and gateway federation
+
+Add Internet-assisted delivery as an optional BETA path under the existing `HybridRouter`.
+
+Implementation order:
+
+1. add `mog_transport_ip` with host/mock bearer;
+2. add bearer-neutral NetifProvider interface;
+3. implement stock T-Deck Wi-Fi NetifProvider;
+4. add bounded `GatewayManager` + authenticated/expiring `GatewayDiscovery`;
+5. establish one outbound authenticated federation session path;
+6. prove LoRa -> gateway -> IP -> gateway -> LoRa with the same PacketId/chat;
+7. prove IP loss -> automatic radio alternate or WAITING_ROUTE;
+8. prove IP return -> event-driven queued-message retry;
+9. add multiple bootstrap/federation peers and bootstrap-loss/failover tests;
+10. add a cellular PPP NetifProvider only against a selected real modem target.
+
+The first handheld implementation does not require public inbound Internet connectivity. Gateway-class targets may expose listeners after security/resource review. Wi-Fi/cellular are bearers below one IP transport, not separate chats or routing engines.
+
 ## Phase 6 — Field beta
 
-Run no-SD standalone, two-node re-entry/delayed-delivery, four-node failover, hybrid ESP-NOW/LoRa and smartphone-UX acceptance tests on real hardware. Capture RSSI/SNR, airtime, recovery time, internal-store health, memory high-water marks, UI responsiveness and battery/power impact. Exercise NORMAL/CONSERVE/CRITICAL/SURVIVAL state transitions on stock T-Deck telemetry. Stable remains LoRa-first; ESP-NOW remains beta until repeated hardware evidence is strong.
+Run no-SD standalone, two-node re-entry/delayed-delivery, four-node failover, hybrid ESP-NOW/LoRa, Wi-Fi IP-backhaul and smartphone-UX acceptance tests on real hardware. Capture RSSI/SNR, airtime, recovery time, internal-store health, memory high-water marks, UI responsiveness and battery/power impact. Exercise NORMAL/CONSERVE/CRITICAL/SURVIVAL state transitions on stock T-Deck telemetry.
+
+For IP beta, include at least two participating gateways on different IP networks and prove Internet/path loss does not split the chat or create duplicate messages. Cellular is not advertised until a selected modem/provider path is hardware-tested.
 
 Ambient RF harvesting is not part of the normal field-beta claim unless real external harvesting hardware is separately available and instrumented.
 
 ## Phase 7 — Scale research
 
-Use simulation to evaluate 50/100/500/1000+ node regional scenarios. Research hierarchical/regional routing, TDMA/backbone scheduling and route summaries only if measured control traffic requires them. Include energy-aware relay distribution in scale scenarios so critically low-battery handhelds are not selected as preferred infrastructure when better powered nodes exist.
+Use simulation to evaluate 50/100/500/1000+ node regional scenarios. Research hierarchical/regional routing, gateway reachability summaries, federation control-traffic aggregation, TDMA/backbone scheduling and route summaries only if measured control traffic requires them. Include energy-aware relay distribution so critically low-battery handhelds are not selected as preferred infrastructure when better powered nodes exist.
+
+No nationwide/worldwide capacity claim is made until federation simulations and multi-site evidence support it.
 
 ## Phase 8 — Lab-only transports, RF assist and harvesting hardware
 
-Evaluate Wi-Fi Aware/NAN, RIS/passive RF assist, compatible external backscatter hardware and real ambient-RF energy-harvesting hardware. Measure harvested power, storage charge behavior, communication impact, receiver desense/insertion loss and safe fallback. None of these is required for the stable core and each remains independently removable.
+Evaluate Wi-Fi Aware/NAN, advanced NAT traversal/direct peer experiments, RIS/passive RF assist, compatible external backscatter hardware and real ambient-RF energy-harvesting hardware. Measure harvested power, storage charge behavior, communication impact, receiver desense/insertion loss and safe fallback. None of these is required for the stable core and each remains independently removable.
 
 ## Release channels
 
-- **STABLE:** standalone no-SD T-Deck operation, internal durable queue, LoRa backbone, validated multipath/failover, reliability/store-forward, smartphone-like local UI and EnergyManager with no dependence on harvesting hardware.
-- **BETA:** Stable + hardware-tested ESP-NOW Normal/LR hybrid lane.
-- **LAB:** NAN, TDMA/regional experiments, RF assist, external backscatter and Ambient RF Energy Assist hardware integration.
+- **STABLE:** standalone no-SD T-Deck operation, internal durable queue, LoRa backbone, validated multipath/failover, reliability/store-forward, smartphone-like local UI and EnergyManager with no dependence on harvesting hardware or Internet.
+- **BETA:** Stable + hardware-tested ESP-NOW Normal/LR and/or IP gateway federation capabilities whose evidence gates pass. Cellular remains target-specific.
+- **LAB:** NAN, advanced NAT traversal, TDMA/regional experiments, RF assist, external backscatter and Ambient RF Energy Assist hardware integration.
