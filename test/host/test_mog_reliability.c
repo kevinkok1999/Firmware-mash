@@ -14,6 +14,7 @@ int main(void)
     mog_message_key_t restored_route = { .origin = 10u, .packet_id = 2u };
     mog_message_key_t restored_done = { .origin = 10u, .packet_id = 3u };
     mog_message_key_t restored_exhausted = { .origin = 10u, .packet_id = 4u };
+    mog_message_key_t never_sent = { .origin = 10u, .packet_id = 5u };
     mog_message_key_t due[2];
     size_t n = 0, failed = 0;
     const mog_reliability_entry_t *e;
@@ -79,8 +80,20 @@ int main(void)
     e = mog_reliability_find(&rel, restored_ack);
     assert(e != NULL && e->state == MOG_MSG_READY && e->attempts == 1u &&
            e->next_retry_ms == 0u);
-    assert(mog_reliability_note_send(&rel, restored_ack, 3000u) == MOG_REL_OK);
-    assert(mog_reliability_find(&rel, restored_ack)->attempts == 2u);
+
+    /* A destination ACK can arrive after sender reboot but before retry. It
+     * belongs to the same origin-qualified logical message and must converge
+     * that recovered READY entry to Delivered without consuming an attempt. */
+    assert(mog_reliability_note_e2e_ack(&rel, restored_ack) == MOG_REL_OK);
+    e = mog_reliability_find(&rel, restored_ack);
+    assert(e != NULL && e->state == MOG_MSG_DELIVERED && e->attempts == 1u);
+    assert(mog_reliability_note_e2e_ack(&rel, restored_ack) == MOG_REL_OK);
+
+    /* Conversely, an ACK must never manufacture delivery for a READY message
+     * that has no evidence of any prior send attempt. */
+    assert(mog_reliability_track(&rel, never_sent, 3u, 100u) == MOG_REL_OK);
+    assert(mog_reliability_note_e2e_ack(&rel, never_sent) == MOG_REL_ERR_STATE);
+    assert(mog_reliability_find(&rel, never_sent)->state == MOG_MSG_READY);
 
     assert(mog_reliability_restore(&rel, restored_route, MOG_MSG_WAITING_ROUTE,
                                    1u, 3u, 100u) == MOG_REL_OK);
