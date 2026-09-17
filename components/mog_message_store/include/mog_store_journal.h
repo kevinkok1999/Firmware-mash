@@ -49,6 +49,12 @@ typedef int (*mog_store_journal_replay_cb)(mog_store_journal_op_t op,
  *
  * The commit marker is written only after the entry payload is fsync'd. A
  * reset before the second fsync leaves an invalid tail that replay ignores.
+ *
+ * IMPORTANT: durable-store startup must replay the journal and, when replay
+ * returns MOG_JOURNAL_RECOVERED_PARTIAL, truncate to out_info.valid_bytes
+ * BEFORE the first new append. Appending behind an invalid tail would make
+ * later bytes unreachable because recovery deliberately stops at the first
+ * corruption rather than skipping it.
  */
 int mog_store_journal_append(const char *path,
                              mog_store_journal_op_t op,
@@ -66,8 +72,9 @@ int mog_store_journal_append(const char *path,
  * prevents pre-snapshot journal entries from being applied twice.
  *
  * A torn/corrupt tail returns MOG_JOURNAL_RECOVERED_PARTIAL and reports the
- * number of bytes that were fully validated. The caller may then truncate the
- * journal to valid_bytes. Corruption never causes later bytes to be trusted.
+ * number of bytes that were fully validated. The caller MUST truncate to
+ * valid_bytes before allowing another append. Corruption never causes later
+ * bytes to be trusted.
  */
 int mog_store_journal_replay(const char *path,
                              uint32_t record_size,
@@ -78,7 +85,11 @@ int mog_store_journal_replay(const char *path,
                              void *ctx,
                              mog_store_journal_scan_info_t *out_info);
 
-/* Truncate a journal to a previously validated prefix and fsync it. */
+/*
+ * Truncate a journal to a previously validated prefix and fsync it. This is
+ * the only approved repair for a damaged trailing entry; do not scan past the
+ * first invalid entry looking for apparently valid later bytes.
+ */
 int mog_store_journal_truncate(const char *path, size_t valid_bytes);
 
 #ifdef __cplusplus
