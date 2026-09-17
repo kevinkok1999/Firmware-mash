@@ -16,7 +16,7 @@ NotificationBanner
 GlobalErrorBanner
 ```
 
-StatusBar reads immutable/snapshot state only. It does not own network logic.
+StatusBar reads immutable/snapshot state only. It does not own network or energy logic.
 
 ## Screen map
 
@@ -39,6 +39,7 @@ Home
     ├── Identity/Contacts
     ├── RadioRegion
     ├── Storage
+    ├── BatteryPower
     ├── Firmware/About
     └── Advanced
 ```
@@ -51,7 +52,8 @@ Inputs:
 - queued count;
 - network summary;
 - battery;
-- current time.
+- current time;
+- compact energy-saving state when active.
 
 Actions:
 
@@ -60,7 +62,7 @@ Actions:
 - open Network;
 - open Settings.
 
-No raw routing metrics on Home.
+No raw routing or harvesting metrics on Home.
 
 ## ConversationList
 
@@ -91,14 +93,16 @@ DeliveryStateText/Icon
 Outgoing message mapping:
 
 ```text
-CREATED/READY      -> Sending…
-SENDING/WAITING_ACK-> Sending…
-WAITING_ROUTE      -> Waiting for connection
-DEFERRED           -> Queued
-DELIVERED          -> Delivered
-EXPIRED            -> Expired
-FAILED_PERMANENT   -> Could not deliver
+CREATED/READY       -> Sending…
+SENDING/WAITING_ACK -> Sending…
+WAITING_ROUTE       -> Waiting for connection
+DEFERRED            -> Queued
+DELIVERED           -> Delivered
+EXPIRED              -> Expired
+FAILED_PERMANENT    -> Could not deliver
 ```
+
+An energy-deferred transmission remains pending/queued according to its real reliability state. It never maps to Delivered until end-to-end evidence exists.
 
 A WAITING_ROUTE/DEFERRED message remains in the same bubble position; automatic retry updates the status in place. Do not create a second bubble for the retry.
 
@@ -137,6 +141,20 @@ simple topology/node list
 
 No route editing in the normal view.
 
+## BatteryPower
+
+Normal-user view may show:
+
+```text
+Battery percentage if known
+Charging / external power
+Battery saver status
+Survival mode status when active
+Energy assist active only with detected compatible hardware
+```
+
+Do not expose raw rectifier/PMIC/reservoir engineering parameters here.
+
 ## AdvancedDiagnostics
 
 Read-only by default in STABLE:
@@ -152,12 +170,17 @@ queue/pool pressure
 storage health
 RAM/PSRAM high-water marks
 airtime/congestion
+EnergyManager state
+external-power state
+energy-policy deferrals
+optional harvest-provider availability/confidence
+measured harvest power/reservoir telemetry if actual hardware provides it
 firmware/build identifiers
 ```
 
 ## Settings
 
-Stable normal settings do not expose arbitrary routing/RF tuning. Region changes require clear validation/warnings.
+Stable normal settings do not expose arbitrary routing/RF/power-electronics tuning. Region changes require clear validation/warnings.
 
 ## Event bindings
 
@@ -170,11 +193,13 @@ UNREAD_COUNT_CHANGED
 NETWORK_STATE_CHANGED
 QUEUE_COUNT_CHANGED
 BATTERY_STATE_CHANGED
+ENERGY_STATE_CHANGED
+ENERGY_SOURCE_CHANGED
 STORAGE_WARNING_CHANGED
 RADIO_HEALTH_CHANGED
 ```
 
-UI must not directly subscribe to raw radio callbacks when a normalized application/network state exists.
+UI must not directly subscribe to raw radio, ADC, PMIC or harvesting-provider callbacks when a normalized application/network/energy state exists.
 
 ## Input mapping
 
@@ -200,7 +225,9 @@ The UI thread/task cannot block on:
 - end-to-end ACK;
 - MessageStore compaction;
 - ESP-NOW peer discovery;
-- LoRa receive/transmit completion.
+- LoRa receive/transmit completion;
+- EnergyManager sampling;
+- harvester-provider I/O.
 
 Every long-running operation is represented as state and returns control to the UI loop.
 
@@ -221,4 +248,4 @@ Boot
 -> Delivered
 ```
 
-The complete flow is usable using the T-Deck itself with no phone required.
+Energy-state changes may alter background behavior without changing this mental model. The complete flow is usable using the T-Deck itself with no phone required.
