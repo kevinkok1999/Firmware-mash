@@ -13,9 +13,15 @@ The pinned Bramble foundation already provides internal SPIFFS message persisten
 
 Firmware-mash therefore does not use in-place mutation as its final durable-state model.
 
-## Required model
+## Implemented Phase-1 model
 
-Durable message state is composed of two mechanisms.
+Durable message state is now composed of three layers:
+
+1. `mog_store_journal` — append-only mutation log;
+2. `mog_store_snapshot` — dual-slot transactional checkpoints;
+3. `mog_store_state` — host-testable recovery/state engine combining snapshot + journal.
+
+Bramble keeps its existing public `msg_store_spiffs_*` API. The Firmware-mash overlay replaces only the persistence backend beneath that API, so the rest of the pinned foundation does not need a parallel message-store implementation.
 
 ### 1. Append-only journal for normal mutations
 
@@ -24,26 +30,55 @@ Normal durable changes are represented as monotonically sequenced journal operat
 - `PUT` stores the complete durable state of one message UID;
 - `DELETE` removes a UID only after the higher-level lifecycle contract permits deletion.
 
-Each entry has an explicitly serialized little-endian header, sequence, UID, payload CRC, header CRC and commit marker. The writer first writes header + payload and fsyncs, then publishes the committed header and fsyncs again. An unfinished append therefore cannot be mistaken for a committed entry.
+Each journal entry uses a fixed little-endian header with explicit format version, sequence, UID, payload size, payload CRC, header CRC and commit marker. The writer first writes an uncommitted header + payload and fsyncs them, then publishes the committed header and fsyncs again. An unfinished append therefore cannot be mistaken for a committed entry.
 
-Recovery validates entries strictly in ascending sequence order and stops at the first torn, corrupt or non-monotonic entry. It never skips bad bytes and resumes later. If a damaged tail is found, startup must truncate the journal to the reported validated `valid_bytes` before any new append. Otherwise later valid events could be placed behind unreachable corrupt bytes.
+Recovery validates entries strictly in ascending sequence order and stops at the first torn, corrupt or non-monotonic entry. It never skips bad bytes and resumes later. If a damaged tail is found, startup truncates the journal to the reported validated `valid_bytes` before any new append.
 
-A committed snapshot stores a sequence watermark. Journal replay validates older entries but only reapplies entries newer than that watermark, preventing duplicate application after compaction.
+### 2. Transactional snapshots
 
-### 2. Transactional snapshot for compaction
+Snapshot format v2 uses a fixed little-endian on-disk header rather than writing a native C structure. Each committed snapshot records:
 
-When journal growth requires compaction:
+- generation;
+- record size/count;
+- highest included journal sequence (watermark);
+- payload CRC;
+- header CRC;
+- explicit commit marker.
 
-1. reconstruct current state using the valid committed snapshot plus valid journal prefix;
-2. write a complete new snapshot to the inactive/shadow slot with a higher generation;
-3. fsync payload;
-4. publish the committed self-validating snapshot header;
-5. fsync commit;
-6. validate and read the new snapshot back;
-7. only after successful validation may the old generation and already-checkpointed journal prefix become reclaimable;
-8. a power cut before that point leaves the previous committed generation recoverable.
+Compaction writes only to the inactive slot. The previous committed slot is left untouched until the new payload and commit header are durable and validate correctly. Boot chooses the newest fully valid generation, using the sequence watermark as the tie-breaker.
 
-Two valid snapshot generations may coexist temporarily. Boot selects the newest fully valid generation. Generation number never substitutes for CRC/format validation.
+The snapshot watermark prevents already-checkpointed journal events from being applied twice after reboot.
+
+### 3. State/recovery engine
+
+`mog_store_state` reconstructs bounded current state from:
+
+1. newest valid snapshot;
+2. journal entries newer than the snapshot watermark.
+
+It rejects invalid/duplicate zero keys, records the next sequence/generation and exposes the validated journal prefix for tail repair.
+
+## Bramble adapter behavior
+
+`overlay/bramble/components/msg_store/msg_store_spiffs.c` preserves Bramble's API while changing persistence semantics:
+
+- `save()` -> durable journal `PUT` keyed by UID;
+- `update()` -> durable journal `PUT` on the same UID, never an in-place record rewrite;
+- `load_recent()` -> recovered snapshot+journal state;
+- `rollover()` -> retained recent state is checkpointed transactionally to the inactive snapshot slot;
+- `clear()` -> message-persistence files only; identity/config storage is untouched.
+
+The adapter preserves the original durable timestamp during later status/route updates. Bramble deliberately zeros restored RAM timestamps because old uptime values are meaningless after reboot; that zero must not overwrite the durable record.
+
+If the durable store is already full after a reboot (for example power loss after the final append but before caller-side rollover), the next save first performs a proactive transactional rollover. This prevents a full-store deadlock.
+
+## Bounded journal growth
+
+Logical message count alone is not enough to trigger compaction because delivery/status updates can generate many journal events without adding messages.
+
+The adapter therefore performs a full checkpoint after a bounded number of journal mutations (`MOG_JOURNAL_CHECKPOINT_OPS`, currently 256). A failed cleanup does not invalidate an already durable journal operation; recovery re-derives authoritative state and can safely remove a journal containing only events already covered by the committed snapshot watermark.
+
+No unbounded update-only journal growth is permitted in STABLE builds.
 
 ## Boot recovery
 
@@ -55,12 +90,23 @@ Recovery order:
 4. replay the journal using the snapshot sequence watermark;
 5. stop at the first torn/corrupt/non-monotonic journal entry;
 6. if replay reports partial recovery, truncate exactly to its validated `valid_bytes` before allowing another append;
-7. reconstruct bounded in-memory MessageStore state;
+7. reconstruct bounded in-memory durable state;
 8. establish the next sequence strictly above every committed/replayed sequence;
-9. publish storage health counters/diagnostics;
-10. continue boot even when message persistence is unavailable, without erasing identity/config.
+9. if the journal only contains entries already covered by the snapshot watermark, truncate that stale journal safely;
+10. continue device boot even when message persistence is unavailable, without erasing identity/config.
 
-If neither snapshot is valid but a legacy Bramble store exists during a supported migration, migration logic must be explicit and transactional. Otherwise storage enters a degraded/recovery state; it must not silently reinterpret unknown bytes.
+## Legacy Bramble persistence policy
+
+There is no prior public Firmware-mash release whose message schema must be migrated in Phase 1. Therefore the development overlay does **not** silently reinterpret or import the legacy Bramble `/spiffs/messages.bin` file.
+
+Policy:
+
+- if a legacy Bramble file exists while the new Firmware-mash store is empty, it is left untouched and a warning is logged;
+- no bytes are silently reinterpreted as the new journal/snapshot format;
+- an explicit user message-store clear may remove the legacy message file as part of clearing message history;
+- if a future supported migration is required, it must be separately versioned, transactional and tested before release.
+
+Once Firmware-mash has a public persistent schema, normal Firmware-mash updates must preserve/migrate that schema according to the update/recovery contracts.
 
 ## Ownership boundaries
 
@@ -79,48 +125,55 @@ A caller may treat a durable operation as committed only after the required jour
 
 ## Boundedness
 
-The durable system must have explicit limits for:
+The durable system has or must retain explicit limits for:
 
-- maximum active messages;
+- maximum active/persisted messages;
 - message/record size;
-- journal size/entry threshold that triggers compaction;
-- retained snapshot generations;
+- journal mutation threshold for checkpointing;
+- retained snapshot generations (two slots);
 - compaction scratch memory;
-- write-amplification/health counters.
+- write-amplification/storage-health counters.
 
-No unbounded journal growth is permitted in STABLE builds.
+T-Deck compaction scratch/state allocations prefer PSRAM and fall back to default heap only when necessary.
 
-## Fault-injection requirements
+## Host fault/integration tests
 
-Host/simulator tests must eventually cover at least:
+The Phase-1 host suite now covers the storage primitives/state engine plus the real Bramble persistence adapter compiled through ESP/Bramble host shims.
 
-- torn snapshot payload;
-- torn snapshot commit header;
-- corrupted snapshot payload CRC;
-- wrong record schema/version;
-- both snapshot slots present, newest invalid;
-- journal torn in header;
-- journal torn in payload;
-- journal payload/header CRC corruption;
-- non-monotonic journal sequence;
+Covered scenarios include:
+
+- CRC32 reference/incremental behavior;
+- torn/invalid snapshot fallback;
+- wrong record schema;
+- snapshot read capacity protection;
+- journal torn/corrupt tail;
+- journal sequence/commit validation;
 - startup tail truncation before subsequent append;
-- snapshot watermark excludes already-compacted events from replay;
-- power loss before/after both journal fsync points;
-- power loss at each snapshot compaction phase;
-- repeated compaction without leaked files/storage;
-- reboot with full store;
-- no identity/config loss when message storage cannot recover.
+- snapshot watermark excluding already-checkpointed events;
+- snapshot + journal recovery;
+- adapter timestamp preservation across a process restart;
+- full-store proactive rollover;
+- adapter reboot after rollover;
+- adapter torn-journal recovery followed by a new append and another reboot.
 
-Physical power-cut testing on a real T-Deck Plus remains a STABLE promotion requirement even after host fault injection passes.
+Still required before STABLE promotion:
+
+- physical no-SD boot;
+- real power-cut testing at multiple commit/compaction points;
+- flash wear/health measurement under realistic message/update load;
+- real T-Deck target build evidence for the current overlay;
+- release/update migration tests once a public Firmware-mash schema exists.
 
 ## Phase 1 exit condition
 
-Phase 1 is not complete merely because `mog_store_snapshot` and `mog_store_journal` compile. It exits only when:
+Phase 1 is not complete merely because the storage components exist. It exits only when:
 
 - host tests pass with warnings-as-errors;
-- the pinned foundation sync is reproducible;
-- the journal + snapshot model is integrated over the Bramble message-store adapter;
-- legacy migration behavior is defined/tested if required;
-- target T-Deck build succeeds;
+- the real Bramble adapter integration test passes;
+- pinned foundation sync + overlay application are reproducible and fail closed on source drift;
+- the journal + snapshot model is integrated under Bramble's existing message-store API;
+- target T-Deck Plus build succeeds with the overlay;
 - source/simulator no-SD behavior is preserved;
 - hardware-only release evidence remains clearly marked unverified rather than assumed.
+
+Current infrastructure note: GitHub's `phase1-foundation` and `preflight` jobs are presently queued before step execution in this repository. That runner/scheduling condition is not counted as a firmware PASS or FAIL; target-build evidence remains open until a runner actually executes the gate.
