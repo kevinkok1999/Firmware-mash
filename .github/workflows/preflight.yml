@@ -30,6 +30,7 @@ jobs:
             docs/RESOURCE_BUDGET.md
             docs/USER_RELEASE_CONTRACT.md
             docs/UI_UX_CONTRACT.md
+            docs/UI_IMPLEMENTATION_MAP.md
             docs/FEATURE_MANIFEST.md
             docs/IMPLEMENTATION_BLUEPRINT.md
             docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md
