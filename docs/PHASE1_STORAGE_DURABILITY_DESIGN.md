@@ -58,6 +58,19 @@ The snapshot watermark prevents already-checkpointed journal events from being a
 
 It rejects invalid/duplicate zero keys, records the next sequence/generation and exposes the validated journal prefix for tail repair.
 
+## Durable payload schema guard
+
+The journal/snapshot container format is explicitly serialized, but the current Phase-1 payload is the approved Bramble `stored_msg_t` record layout. That payload must never drift silently across a firmware update.
+
+`overlay/bramble/components/msg_store/mog_msg_store_layout_guard.c` is therefore compiled as part of the real Bramble `msg_store` component and contains compile-time assertions for:
+
+- `MSG_TEXT_MAX` and `MSG_ROUTE_MAX_HOPS`;
+- enum widths;
+- every persisted field offset;
+- final `sizeof(stored_msg_t)` (716 bytes for the approved foundation).
+
+The host gate compiles the same guard against the mirrored Bramble test layout. The real T-Deck build compiles it against the pinned upstream header. If upstream or future Firmware-mash code changes the record layout, the build fails closed and a reviewed storage-schema migration/version bump is required before release. Record-size equality alone is not accepted as sufficient compatibility evidence.
+
 ## Bramble adapter behavior
 
 `overlay/bramble/components/msg_store/msg_store_spiffs.c` preserves Bramble's API while changing persistence semantics:
@@ -151,6 +164,7 @@ Covered scenarios include:
 - startup tail truncation before subsequent append;
 - snapshot watermark excluding already-checkpointed events;
 - snapshot + journal recovery;
+- compile-time durable payload layout guard;
 - adapter timestamp preservation across a process restart;
 - full-store proactive rollover;
 - adapter reboot after rollover;
@@ -169,6 +183,7 @@ Still required before STABLE promotion:
 Phase 1 is not complete merely because the storage components exist. It exits only when:
 
 - host tests pass with warnings-as-errors;
+- the durable payload layout guard compiles;
 - the real Bramble adapter integration test passes;
 - pinned foundation sync + overlay application are reproducible and fail closed on source drift;
 - the journal + snapshot model is integrated under Bramble's existing message-store API;
