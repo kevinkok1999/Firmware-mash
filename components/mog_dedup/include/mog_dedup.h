@@ -46,9 +46,10 @@ int mog_dedup_restore(mog_dedup_t *dedup, mog_message_key_t key,
 /* Stage an authenticated logical message in RAM. A first receipt is NOT safe
  * to present or ACK yet: the caller must durably commit receiver truth in the
  * authoritative MessageStore, then call mog_dedup_mark_durable(). This closes
- * the persist -> present -> ACK crash window without giving dedup storage
- * authority. A durable duplicate may be presented only if it was not already
- * presented, and may always regenerate an ACK for lost-ACK recovery. */
+ * the receive -> persist barrier without giving dedup storage authority. A
+ * durable duplicate may be presented only if durable MessageStore truth does
+ * not already say it was presented, and may regenerate an ACK for lost-ACK
+ * recovery. */
 int mog_dedup_receive(mog_dedup_t *dedup, mog_message_key_t key,
                       uint32_t now_ms, bool *should_present,
                       bool *should_ack);
@@ -58,10 +59,18 @@ int mog_dedup_receive(mog_dedup_t *dedup, mog_message_key_t key,
 int mog_dedup_mark_durable(mog_dedup_t *dedup, mog_message_key_t key,
                            bool *should_present, bool *should_ack);
 
-/* Presentation and ACK completion are rejected until durable receiver truth
- * exists. Presentation remains a separate step so a crash after persistence
- * but before UI delivery can be recovered deterministically. */
-int mog_dedup_mark_presented(mog_dedup_t *dedup, mog_message_key_t key);
+/* Commit presentation truth into the RAM mirror only AFTER the authoritative
+ * MessageStore has durably recorded delivered_to_chat=true for this key. This
+ * ordering is deliberate: marking RAM first could suppress a message after a
+ * reboot even though durable truth still says it needs presentation. The UI
+ * layer must itself be idempotent by the same (origin, PacketId) key across the
+ * store-commit -> UI-render crash window; dedup does not claim impossible
+ * transactional exactly-once side effects across storage and UI. */
+int mog_dedup_mark_presented_durable(mog_dedup_t *dedup,
+                                     mog_message_key_t key);
+
+/* ACK completion need not be durable for correctness: a reboot may regenerate
+ * an end-to-end ACK for a duplicate, which is explicitly safe and bounded. */
 int mog_dedup_mark_ack_sent(mog_dedup_t *dedup, mog_message_key_t key);
 
 const mog_dedup_entry_t *mog_dedup_find(const mog_dedup_t *dedup,
