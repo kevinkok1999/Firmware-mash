@@ -46,6 +46,16 @@ include_flags=(-I"${repo_root}/components/mog_message_store/include")
   "${repo_root}/test/host/test_mog_reliability.c" \
   -o "${build_dir}/test_mog_reliability"
 
+# Receiver-side dedup preserves one chat item across transports/reboots while
+# allowing authenticated duplicates to regenerate a lost E2E ACK.
+"$cc_bin" "${common_flags[@]}" \
+  -I"${repo_root}/components/mog_core/include" \
+  -I"${repo_root}/components/mog_dedup/include" \
+  "${repo_root}/components/mog_core/mog_core.c" \
+  "${repo_root}/components/mog_dedup/mog_dedup.c" \
+  "${repo_root}/test/host/test_mog_dedup.c" \
+  -o "${build_dir}/test_mog_dedup"
+
 # Compile the durable stored_msg_t layout contract independently. Any upstream
 # field-order/width/padding drift must fail the build and force an explicit
 # storage-schema migration review instead of silently reinterpreting bytes.
@@ -77,6 +87,7 @@ sed 's#"/spiffs/#"/tmp/mog-spiffs/#g' \
 "${build_dir}/test_mog_store_state"
 "${build_dir}/test_mog_router"
 "${build_dir}/test_mog_reliability"
+"${build_dir}/test_mog_dedup"
 
 rm -rf /tmp/mog-spiffs
 mkdir -p /tmp/mog-spiffs
