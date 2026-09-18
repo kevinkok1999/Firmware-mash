@@ -18,11 +18,13 @@ typedef enum {
     MOG_DEDUP_ERR_ARG = -1,
     MOG_DEDUP_ERR_FULL = -2,
     MOG_DEDUP_ERR_NOT_FOUND = -3,
+    MOG_DEDUP_ERR_NOT_DURABLE = -4,
 } mog_dedup_result_t;
 
 typedef struct {
     mog_message_key_t key;
     uint32_t received_at_ms;
+    bool durable;
     bool delivered_to_chat;
     bool ack_required;
     bool in_use;
@@ -36,22 +38,30 @@ typedef struct {
 void mog_dedup_init(mog_dedup_t *dedup);
 
 /* Restore receiver-side truth only from a record already committed by the
- * authoritative MessageStore. This component deliberately owns no storage. */
+ * authoritative MessageStore. Restored records are therefore durable. */
 int mog_dedup_restore(mog_dedup_t *dedup, mog_message_key_t key,
                       bool delivered_to_chat, bool ack_required,
                       uint32_t received_at_ms);
 
-/* Record a newly authenticated logical message. A duplicate never creates a
- * second chat item; duplicate reception may still require an ACK resend. */
+/* Stage an authenticated logical message in RAM. A first receipt is NOT safe
+ * to present or ACK yet: the caller must durably commit receiver truth in the
+ * authoritative MessageStore, then call mog_dedup_mark_durable(). This closes
+ * the persist -> present -> ACK crash window without giving dedup storage
+ * authority. A durable duplicate may be presented only if it was not already
+ * presented, and may always regenerate an ACK for lost-ACK recovery. */
 int mog_dedup_receive(mog_dedup_t *dedup, mog_message_key_t key,
                       uint32_t now_ms, bool *should_present,
                       bool *should_ack);
 
-/* Mark presentation only after the authoritative store has durably committed
- * the receiver-side delivery/presentation record. */
-int mog_dedup_mark_presented(mog_dedup_t *dedup, mog_message_key_t key);
+/* Call only after MessageStore has committed the receiver record. Returns the
+ * post-commit actions that are now safe. Repeating this call is idempotent. */
+int mog_dedup_mark_durable(mog_dedup_t *dedup, mog_message_key_t key,
+                           bool *should_present, bool *should_ack);
 
-/* ACK transmission is transport work, not user-visible delivery truth. */
+/* Presentation and ACK completion are rejected until durable receiver truth
+ * exists. Presentation remains a separate step so a crash after persistence
+ * but before UI delivery can be recovered deterministically. */
+int mog_dedup_mark_presented(mog_dedup_t *dedup, mog_message_key_t key);
 int mog_dedup_mark_ack_sent(mog_dedup_t *dedup, mog_message_key_t key);
 
 const mog_dedup_entry_t *mog_dedup_find(const mog_dedup_t *dedup,
