@@ -1,0 +1,68 @@
+name: phase1-foundation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - 'components/mog_message_store/**'
+      - 'overlay/bramble/**'
+      - 'test/host/**'
+      - 'test/run_host_tests.sh'
+      - 'scripts/sync-foundation.sh'
+      - 'scripts/apply-overlay.sh'
+      - 'scripts/build-tdeck.sh'
+      - 'scripts/phase-gate.sh'
+      - 'docs/BASELINE_APPROVED'
+      - 'docs/PHASE1_STORAGE_DURABILITY_DESIGN.md'
+      - '.github/workflows/phase1-foundation.yml'
+  pull_request:
+    paths:
+      - 'components/mog_message_store/**'
+      - 'overlay/bramble/**'
+      - 'test/host/**'
+      - 'test/run_host_tests.sh'
+      - 'scripts/**'
+      - 'docs/BASELINE_APPROVED'
+      - 'docs/PHASE1_STORAGE_DURABILITY_DESIGN.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase1-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phase1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Execute Phase 1 gate
+        shell: bash
+        run: bash scripts/phase-gate.sh 1
+
+      - name: Capture target firmware evidence
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo='build/foundation/bramble'
+          test -s "$repo/build-tdeck-plus/bramble.bin"
+          mkdir -p artifacts/phase1
+          cp "$repo/build-tdeck-plus/bramble.bin" artifacts/phase1/bramble-overlay.bin
+          sha256sum "$repo/build-tdeck-plus/bramble.bin" > artifacts/phase1/SHA256SUMS
+          stat -c 'firmware_bin_bytes=%s' "$repo/build-tdeck-plus/bramble.bin" > artifacts/phase1/firmware-size.txt
+          git -C "$repo" rev-parse HEAD > artifacts/phase1/foundation-commit.txt
+          cp "$repo/.firmware-mash-overlay" artifacts/phase1/overlay.txt
+
+      - name: Upload Phase 1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-mash-phase1-${{ github.run_id }}
+          path: artifacts/phase1/
+          if-no-files-found: warn
+          retention-days: 30

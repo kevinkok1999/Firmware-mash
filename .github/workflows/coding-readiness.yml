@@ -1,0 +1,110 @@
+name: coding-readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-coding-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify branch and baseline marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "develop" || {
+            echo "Coding trigger must run from develop; got $GITHUB_REF_NAME" >&2
+            exit 1
+          }
+
+          marker='docs/BASELINE_APPROVED'
+          test -s "$marker" || {
+            echo 'BLOCKED: docs/BASELINE_APPROVED is missing.' >&2
+            exit 1
+          }
+
+          required_fields=(
+            '^foundation_repo=.+$'
+            '^foundation_commit=[0-9a-f]{40}$'
+            '^tdeck_build=PASS$'
+            '^baseline_tests=PASS$'
+            '^simulator_tests=PASS$'
+            '^license_review=PASS$'
+            '^no_sd_dependency_review=PASS$'
+          )
+          for pattern in "${required_fields[@]}"; do
+            grep -Eq "$pattern" "$marker" || {
+              echo "BLOCKED: invalid baseline marker field: $pattern" >&2
+              exit 1
+            }
+          done
+
+      - name: Verify authoritative contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            docs/THREE_PHASE_IMPLEMENTATION_PLAN.md
+            docs/CODING_TRIGGER_CONTRACT.md
+            docs/IMPLEMENTATION_BLUEPRINT.md
+            docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md
+            docs/FEATURE_MANIFEST.md
+            docs/TEST_TRACEABILITY.md
+            docs/PREBUILD_CHECKLIST.md
+            docs/PACKET_DELIVERY_CONTRACT.md
+            docs/STORE_CARRY_CUSTODY_CONTRACT.md
+            docs/IP_GATEWAY_FEDERATION_CONTRACT.md
+            docs/ENERGY_MANAGEMENT_CONTRACT.md
+            docs/FLASHER_RELEASE_CONTRACT.md
+            docs/adr/0008-store-carry-custody.md
+            docs/REPOSITORY_LAYOUT.md
+          )
+          for f in "${required[@]}"; do
+            test -s "$f" || { echo "BLOCKED: missing $f" >&2; exit 1; }
+          done
+
+      - name: Verify final controller gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          report='docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md'
+          test -s "$report" || {
+            echo 'BLOCKED: final controller report is missing.' >&2
+            exit 1
+          }
+          grep -q '^controller_status=READY_FOR_CODING$' "$report" || {
+            echo 'BLOCKED: final controller report is not READY_FOR_CODING.' >&2
+            exit 1
+          }
+          if grep -q '^unresolved_architecture_contradictions=[1-9]' "$report"; then
+            echo 'BLOCKED: unresolved architecture contradictions remain.' >&2
+            exit 1
+          fi
+
+      - name: Execute Phase 1 foundation gate
+        shell: bash
+        run: bash scripts/phase-gate.sh 1
+
+      - name: Coding trigger summary
+        shell: bash
+        run: |
+          {
+            echo '# Firmware-mash coding readiness'
+            echo
+            echo 'READY: baseline, controller and Phase 1 executable gates passed.'
+            echo
+            echo 'Mandatory implementation order:'
+            echo '1. Phase 1 — foundation/durable core'
+            echo '2. Phase 2 — communication engine'
+            echo '3. Phase 3 — product/release/flasher'
+            echo
+            echo 'Sources of truth:'
+            echo '- docs/THREE_PHASE_IMPLEMENTATION_PLAN.md'
+            echo '- docs/CODING_TRIGGER_CONTRACT.md'
+            echo '- docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md'
+            echo '- docs/IMPLEMENTATION_BLUEPRINT.md'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,166 @@
+name: preflight
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  repository-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Required project files
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            .editorconfig
+            LICENSE
+            README.md
+            SECURITY.md
+            CONTRIBUTING.md
+            .github/workflows/coding-readiness.yml
+            .github/workflows/release-package.yml
+            docs/README.md
+            docs/REPOSITORY_LAYOUT.md
+            docs/RESOURCE_BUDGET.md
+            docs/USER_RELEASE_CONTRACT.md
+            docs/FLASHER_RELEASE_CONTRACT.md
+            docs/CODING_TRIGGER_CONTRACT.md
+            docs/UI_UX_CONTRACT.md
+            docs/UI_IMPLEMENTATION_MAP.md
+            docs/FEATURE_MANIFEST.md
+            docs/IMPLEMENTATION_BLUEPRINT.md
+            docs/ONE_SHOT_IMPLEMENTATION_RUNBOOK.md
+            docs/ENERGY_MANAGEMENT_CONTRACT.md
+            docs/IP_GATEWAY_FEDERATION_CONTRACT.md
+            docs/IP_GATEWAY_IMPLEMENTATION_CHECKLIST.md
+            docs/GATEWAY_SECURITY_REQUIREMENTS.md
+            docs/PACKET_DELIVERY_CONTRACT.md
+            docs/STORE_CARRY_CUSTODY_CONTRACT.md
+            docs/WIRE_PROTOCOL_CONTRACT.md
+            docs/MESSAGE_STORE_DESIGN.md
+            docs/BUILD_CONFIG_MATRIX.md
+            docs/TEST_TRACEABILITY.md
+            docs/ARCHITECTURE.md
+            docs/API_CONTRACTS.md
+            docs/ROUTING_SPEC_DRAFT.md
+            docs/LICENSING.md
+            docs/PREBUILD_CHECKLIST.md
+            docs/PREBUILD_REVIEW_2026-09-17.md
+            docs/REAL_WORLD_COMPETITOR_REVIEW_2026-09-17.md
+            docs/CONTROLLER_REVIEW_2026-09-17.md
+            docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md
+            docs/ENERGY_INTEGRATION_REVIEW_2026-09-17.md
+            docs/IP_GATEWAY_REVIEW_2026-09-17.md
+            docs/STANDALONE_TDECK_REQUIREMENTS.md
+            docs/BASELINE_TEMPLATE.md
+            docs/BUILD_PHASE_1_PLAN.md
+            docs/FOUNDATION_BRAMBLE_NOTES.md
+            docs/PROVENANCE_TEMPLATE.md
+            docs/RISK_REGISTER.md
+            docs/ROADMAP.md
+            docs/TESTING.md
+            docs/UPSTREAM_AUDIT_2026-09-17.md
+            docs/adr/README.md
+            docs/adr/0001-single-routing-authority.md
+            docs/adr/0002-foundation-selection-gate.md
+            docs/adr/0003-feature-stability-and-flags.md
+            docs/adr/0004-logical-packet-identity.md
+            docs/adr/0005-standalone-internal-storage.md
+            docs/adr/0006-energy-manager-and-rf-harvest-isolation.md
+            docs/adr/0007-ip-backhaul-and-gateway-federation.md
+            docs/adr/0008-store-carry-custody.md
+          )
+          for f in "${required[@]}"; do
+            test -s "$f" || { echo "Missing or empty required file: $f"; exit 1; }
+          done
+
+          grep -q '^controller_status=READY_FOR_CODING$' docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md || {
+            echo 'Final controller review is not READY_FOR_CODING.' >&2
+            exit 1
+          }
+          grep -q '^unresolved_architecture_contradictions=0$' docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md || {
+            echo 'Final controller review reports unresolved architecture contradictions.' >&2
+            exit 1
+          }
+
+      - name: Reject obvious committed secret/private-key files
+        shell: bash
+        run: |
+          set -euo pipefail
+          matches="$(find . -type f \
+            \( -name '*.pem' -o -name '*.key' -o -name 'secrets.*' -o -name '.env' -o -name '.env.*' \) \
+            -not -name '*.example' -not -name '*.sample' \
+            -not -path './.git/*' -print)"
+          if [ -n "$matches" ]; then
+            echo 'Potential secret/private-key file committed:'
+            printf '%s\n' "$matches"
+            exit 1
+          fi
+
+      - name: Baseline gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker='docs/BASELINE_APPROVED'
+
+          if [ ! -f "$marker" ]; then
+            echo 'Baseline is not approved yet; repository is documentation/config only.'
+
+            allowed_top='^(.git|.github|docs|.editorconfig|.gitignore|CONTRIBUTING.md|LICENSE|README.md|SECURITY.md)$'
+            unexpected="$(find . -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -Ev "$allowed_top" || true)"
+            if [ -n "$unexpected" ]; then
+              echo 'Unexpected top-level path before baseline approval:'
+              printf '%s\n' "$unexpected"
+              exit 1
+            fi
+
+            source_files="$(find . -type f \
+              -not -path './.git/*' \
+              \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \
+                 -o -name '*.ino' -o -name '*.S' -o -name '*.s' -o -name '*.rs' -o -name '*.go' \) \
+              -print)"
+            if [ -n "$source_files" ]; then
+              echo 'Production/source file detected before baseline approval:'
+              printf '%s\n' "$source_files"
+              exit 1
+            fi
+
+            exit 0
+          fi
+
+          echo 'Baseline marker exists; validating required evidence fields.'
+          required_fields=(
+            '^foundation_repo='
+            '^foundation_commit=[0-9a-f]{40}$'
+            '^tdeck_build=PASS$'
+            '^baseline_tests=PASS$'
+            '^simulator_tests=PASS$'
+            '^license_review=PASS$'
+            '^no_sd_dependency_review=PASS$'
+          )
+          for pattern in "${required_fields[@]}"; do
+            grep -Eq "$pattern" "$marker" || {
+              echo "Invalid baseline marker; missing field matching: $pattern"
+              exit 1
+            }
+          done
+
+      - name: Reject production placeholder claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f docs/BASELINE_APPROVED ]; then
+            if grep -RInE 'hardware[ -]?validated[[:space:]]*:[[:space:]]*(yes|true)' components main firmware src 2>/dev/null \
+              | grep -viE 'test|mock|example'; then
+              echo 'Found a hardware-validated claim in source; validation belongs in evidence/docs, not hard-coded claims.'
+              exit 1
+            fi
+          fi

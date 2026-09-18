@@ -1,0 +1,7 @@
+foundation_repo=justinlindh/bramble
+foundation_commit=23854fd883fd29da14d8c0876f6eca4e14fbb938
+tdeck_build=PASS
+baseline_tests=PASS
+simulator_tests=PASS
+license_review=PASS
+no_sd_dependency_review=PASS

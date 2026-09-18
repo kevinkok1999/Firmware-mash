@@ -1,0 +1,123 @@
+#include <assert.h>
+#include <limits.h>
+#include <stdio.h>
+#include "mog_reliability.h"
+
+int main(void)
+{
+    mog_reliability_t rel;
+    mog_message_key_t key = { .origin = 7u, .packet_id = 99u };
+    mog_message_key_t key2 = { .origin = 7u, .packet_id = 100u };
+    mog_message_key_t key3 = { .origin = 8u, .packet_id = 1u };
+    mog_message_key_t key4 = { .origin = 9u, .packet_id = 1u };
+    mog_message_key_t restored_ack = { .origin = 10u, .packet_id = 1u };
+    mog_message_key_t restored_route = { .origin = 10u, .packet_id = 2u };
+    mog_message_key_t restored_done = { .origin = 10u, .packet_id = 3u };
+    mog_message_key_t restored_exhausted = { .origin = 10u, .packet_id = 4u };
+    mog_message_key_t never_sent = { .origin = 10u, .packet_id = 5u };
+    mog_message_key_t due[2];
+    size_t n = 0, failed = 0;
+    const mog_reliability_entry_t *e;
+
+    mog_reliability_init(&rel);
+    assert(mog_reliability_track(&rel, key, 3u, 100u) == MOG_REL_OK);
+    assert(mog_reliability_track(&rel, key, 3u, 100u) == MOG_REL_OK);
+    assert(rel.count == 1u);
+    assert(mog_reliability_note_send(&rel, key, 1000u) == MOG_REL_OK);
+    e = mog_reliability_find(&rel, key);
+    assert(e != NULL && e->state == MOG_MSG_WAITING_ACK && e->attempts == 1u);
+
+    assert(mog_reliability_note_link_success(&rel, key) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, key)->state == MOG_MSG_WAITING_ACK);
+    assert(mog_reliability_due(&rel, 1099u, due, 2u, &n) == MOG_REL_OK && n == 0u);
+    assert(mog_reliability_due(&rel, 1100u, due, 2u, &n) == MOG_REL_OK && n == 1u);
+    assert(mog_message_key_equal(due[0], key));
+
+    assert(mog_reliability_note_send(&rel, key, 1100u) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, key)->next_retry_ms == 1300u);
+    assert(mog_reliability_note_e2e_ack(&rel, key) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, key)->state == MOG_MSG_DELIVERED);
+    assert(mog_reliability_note_e2e_ack(&rel, key) == MOG_REL_OK);
+    assert(mog_reliability_note_send(&rel, key, 1300u) == MOG_REL_ERR_STATE);
+
+    assert(mog_reliability_track(&rel, key2, 2u, 50u) == MOG_REL_OK);
+    assert(mog_reliability_defer_no_route(&rel, key2) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, key2)->state == MOG_MSG_WAITING_ROUTE);
+    assert(mog_reliability_note_route_available(&rel, key2) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, key2)->state == MOG_MSG_READY);
+    assert(mog_reliability_note_route_available(&rel, key2) == MOG_REL_ERR_STATE);
+
+    assert(mog_reliability_track(&rel, key3, 3u, UINT32_MAX) == MOG_REL_ERR_ARG);
+    assert(mog_reliability_track(&rel, key3, 3u,
+                                 (uint32_t)INT32_MAX) == MOG_REL_OK);
+    assert(mog_reliability_note_send(&rel, key3, UINT32_MAX - 10u) == MOG_REL_OK);
+    e = mog_reliability_find(&rel, key3);
+    assert(e != NULL && e->next_retry_ms == (uint32_t)INT32_MAX - 11u);
+    assert(mog_reliability_due(&rel, e->next_retry_ms - 1u, due, 2u, &n) == MOG_REL_OK && n == 0u);
+    assert(mog_reliability_due(&rel, e->next_retry_ms, due, 2u, &n) == MOG_REL_OK && n == 1u);
+    assert(mog_message_key_equal(due[0], key3));
+
+    assert(mog_reliability_track(&rel, key4, 1u, 25u) == MOG_REL_OK);
+    assert(mog_reliability_note_send(&rel, key4, 2000u) == MOG_REL_OK);
+    assert(mog_reliability_sweep_exhausted(&rel, 2024u, &failed) == MOG_REL_OK && failed == 0u);
+    assert(mog_reliability_sweep_exhausted(&rel, 2025u, &failed) == MOG_REL_OK && failed == 1u);
+    assert(mog_reliability_find(&rel, key4)->state == MOG_MSG_FAILED_PERMANENT);
+    assert(mog_reliability_sweep_exhausted(&rel, 2026u, &failed) == MOG_REL_OK && failed == 0u);
+
+    assert(mog_reliability_forget_terminal(&rel, key2) == MOG_REL_ERR_STATE);
+    assert(mog_reliability_forget_terminal(&rel, key) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, key) == NULL);
+    assert(rel.count == 3u);
+    assert(mog_reliability_forget_terminal(&rel, key) == MOG_REL_ERR_NOT_FOUND);
+    assert(mog_reliability_track(&rel, key, 3u, 100u) == MOG_REL_OK);
+    assert(rel.count == 4u);
+
+    /* Reboot recovery is driven by MessageStore truth. A monotonic ACK deadline
+     * is not portable across reboot, so WAITING_ACK resumes READY while the
+     * persisted attempt count survives and still bounds retry work. */
+    assert(mog_reliability_restore(&rel, restored_ack, MOG_MSG_WAITING_ACK,
+                                   1u, 3u, 100u) == MOG_REL_OK);
+    e = mog_reliability_find(&rel, restored_ack);
+    assert(e != NULL && e->state == MOG_MSG_READY && e->attempts == 1u &&
+           e->next_retry_ms == 0u);
+
+    /* A destination ACK can arrive after sender reboot but before retry. It
+     * belongs to the same origin-qualified logical message and must converge
+     * that recovered READY entry to Delivered without consuming an attempt. */
+    assert(mog_reliability_note_e2e_ack(&rel, restored_ack) == MOG_REL_OK);
+    e = mog_reliability_find(&rel, restored_ack);
+    assert(e != NULL && e->state == MOG_MSG_DELIVERED && e->attempts == 1u);
+    assert(mog_reliability_note_e2e_ack(&rel, restored_ack) == MOG_REL_OK);
+
+    /* Conversely, an ACK must never manufacture delivery for a READY message
+     * that has no evidence of any prior send attempt. */
+    assert(mog_reliability_track(&rel, never_sent, 3u, 100u) == MOG_REL_OK);
+    assert(mog_reliability_note_e2e_ack(&rel, never_sent) == MOG_REL_ERR_STATE);
+    assert(mog_reliability_find(&rel, never_sent)->state == MOG_MSG_READY);
+
+    assert(mog_reliability_restore(&rel, restored_route, MOG_MSG_WAITING_ROUTE,
+                                   1u, 3u, 100u) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, restored_route)->state == MOG_MSG_WAITING_ROUTE);
+
+    assert(mog_reliability_restore(&rel, restored_done, MOG_MSG_DELIVERED,
+                                   2u, 3u, 100u) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, restored_done)->state == MOG_MSG_DELIVERED);
+    assert(mog_reliability_note_send(&rel, restored_done, 3000u) == MOG_REL_ERR_STATE);
+
+    /* Reboot must not reset an exhausted retry budget. Until MessageStore
+     * commits the resulting terminal state, runtime fails closed. */
+    assert(mog_reliability_restore(&rel, restored_exhausted, MOG_MSG_WAITING_ACK,
+                                   3u, 3u, 100u) == MOG_REL_OK);
+    assert(mog_reliability_find(&rel, restored_exhausted)->state == MOG_MSG_FAILED_PERMANENT);
+    assert(mog_reliability_note_send(&rel, restored_exhausted, 3000u) == MOG_REL_ERR_STATE);
+
+    assert(mog_reliability_restore(&rel, restored_ack, MOG_MSG_READY,
+                                   0u, 3u, 100u) == MOG_REL_ERR_STATE);
+    assert(mog_reliability_restore(&rel, (mog_message_key_t){0}, MOG_MSG_READY,
+                                   0u, 3u, 100u) == MOG_REL_ERR_ARG);
+    assert(mog_reliability_restore(&rel, (mog_message_key_t){11u, 1u}, MOG_MSG_READY,
+                                   4u, 3u, 100u) == MOG_REL_ERR_ARG);
+
+    puts("mog_reliability: PASS");
+    return 0;
+}

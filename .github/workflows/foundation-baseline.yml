@@ -1,0 +1,204 @@
+name: foundation-baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/foundation-baseline.yml'
+      - 'docs/FOUNDATION_BRAMBLE_NOTES.md'
+      - 'docs/BUILD_PHASE_1_PLAN.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bramble-tdeck-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BRAMBLE_REPO: https://github.com/justinlindh/bramble.git
+      BRAMBLE_COMMIT: 23854fd883fd29da14d8c0876f6eca4e14fbb938
+      IDF_IMAGE: espressif/idf:v5.4.1
+    steps:
+      - name: Checkout preparation repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.25.7 for upstream simulator
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+          cache: false
+
+      - name: Fetch exact Bramble foundation commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .baseline
+          mkdir -p .baseline/artifacts
+          git init .baseline/bramble
+          cd .baseline/bramble
+          git remote add origin "$BRAMBLE_REPO"
+          git fetch --depth 1 origin "$BRAMBLE_COMMIT"
+          git checkout --detach FETCH_HEAD
+          git submodule update --init --recursive --depth 1
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$BRAMBLE_COMMIT"
+          printf '%s\n' "$actual" > ../artifacts/foundation-commit.txt
+          git status --porcelain=v1 > ../artifacts/upstream-working-tree.txt
+
+      - name: Verify foundation toolchain pin and license
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .baseline/bramble
+          test "$(tr -d '\r\n' < .esp-idf-version)" = 'v5.4.1'
+          grep -q 'MIT License' LICENSE
+          sha256sum LICENSE > ../artifacts/LICENSE.sha256
+          cp LICENSE ../artifacts/FOUNDATION_LICENSE.txt
+          printf 'esp_idf=v5.4.1\ngo=%s\n' "$(go version)" > ../artifacts/toolchain-pins.txt
+
+      - name: Pull pinned ESP-IDF builder image
+        shell: bash
+        run: docker pull "$IDF_IMAGE"
+
+      - name: Build untouched T-Deck Plus target
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_WORKSPACE/.baseline/bramble"
+          artifacts="$GITHUB_WORKSPACE/.baseline/artifacts"
+          docker run --rm \
+            -v "$repo:/workspace" \
+            -w /workspace \
+            "$IDF_IMAGE" \
+            bash -lc 'source "$IDF_PATH/export.sh" >/dev/null && bash scripts/flash.sh local tdeck-plus build' \
+            2>&1 | tee "$artifacts/tdeck-build.log"
+
+          test -s "$repo/build-tdeck-plus/bramble.bin"
+          stat -c 'firmware_bin_bytes=%s' "$repo/build-tdeck-plus/bramble.bin" \
+            | tee "$artifacts/firmware-size.txt"
+          sha256sum "$repo/build-tdeck-plus/bramble.bin" \
+            > "$artifacts/bramble.bin.sha256"
+          cp "$repo/build-tdeck-plus/bramble.bin" "$artifacts/bramble.bin"
+          cp "$repo/sdkconfig.tdeck-plus" "$artifacts/sdkconfig.tdeck-plus"
+
+      - name: Capture ESP-IDF size and partition reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_WORKSPACE/.baseline/bramble"
+          artifacts="$GITHUB_WORKSPACE/.baseline/artifacts"
+
+          docker run --rm \
+            -v "$repo:/workspace" \
+            -w /workspace \
+            "$IDF_IMAGE" \
+            bash -lc 'source "$IDF_PATH/export.sh" >/dev/null && idf.py -B build-tdeck-plus size' \
+            2>&1 | tee "$artifacts/idf-size.txt"
+
+          docker run --rm \
+            -v "$repo:/workspace" \
+            -w /workspace \
+            "$IDF_IMAGE" \
+            bash -lc 'source "$IDF_PATH/export.sh" >/dev/null && idf.py -B build-tdeck-plus size-components' \
+            2>&1 | tee "$artifacts/idf-size-components.txt"
+
+          docker run --rm \
+            -v "$repo:/workspace" \
+            -w /workspace \
+            "$IDF_IMAGE" \
+            bash -lc 'python "$IDF_PATH/components/partition_table/gen_esp32part.py" build-tdeck-plus/partition_table/partition-table.bin' \
+            2>&1 | tee "$artifacts/partition-table.txt"
+
+          grep -E '^(CONFIG_SPIRAM|CONFIG_ESPTOOLPY_FLASHSIZE|CONFIG_PARTITION_TABLE|CONFIG_BRAMBLE_BOARD_TDECK_PLUS)' \
+            "$repo/sdkconfig.tdeck-plus" > "$artifacts/relevant-sdkconfig.txt" || true
+
+      - name: Run upstream host/unit test gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_WORKSPACE/.baseline/bramble"
+          artifacts="$GITHUB_WORKSPACE/.baseline/artifacts"
+          docker run --rm \
+            -v "$repo:/workspace" \
+            -w /workspace \
+            "$IDF_IMAGE" \
+            bash -lc 'bash test/run_all_tests.sh' \
+            2>&1 | tee "$artifacts/host-tests.log"
+
+      - name: Run upstream C simulator E2E gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_WORKSPACE/.baseline/bramble"
+          artifacts="$GITHUB_WORKSPACE/.baseline/artifacts"
+          docker run --rm \
+            -v "$repo:/workspace" \
+            -w /workspace \
+            "$IDF_IMAGE" \
+            bash -lc 'bash simulator/test-e2e.sh' \
+            2>&1 | tee "$artifacts/simulator-e2e.log"
+
+      - name: Run upstream Go simulator gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .baseline/bramble/simulator/gosim
+          go build ./... 2>&1 | tee ../../artifacts/gosim-build.log
+          go test -count=1 ./... 2>&1 | tee ../../artifacts/gosim-tests.log
+
+      - name: Capture no-microSD dependency source evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .baseline/bramble
+          report='../artifacts/no-sd-dependency-review.txt'
+          {
+            echo 'Foundation source evidence for T-Deck SD behavior:'
+            echo
+            git grep -n 'sdcard_init' -- main components || true
+            echo
+            git grep -n 'SD card init failed or not present' -- main/main.c || true
+            echo
+            echo 'Required review assertion:'
+            echo '- main.c treats missing/failed SD init as a warning and continues boot.'
+            echo '- SD card is an optional T-Deck component, not the durable Firmware-mash core store.'
+            echo '- Actual hardware no-SD boot remains a later STABLE release test.'
+          } | tee "$report"
+
+          grep -q 'SD card init failed or not present' main/main.c
+          if git grep -nE 'ESP_ERROR_CHECK\([^)]*sdcard_init|abort\(.*sdcard|assert\(.*sdcard' -- main components; then
+            echo 'Found a potentially fatal SD-card dependency; manual review required.' >&2
+            exit 1
+          fi
+
+      - name: Write baseline machine summary
+        if: success()
+        shell: bash
+        run: |
+          cat > .baseline/artifacts/baseline-machine-summary.txt <<EOF
+          foundation_repo=justinlindh/bramble
+          foundation_commit=$BRAMBLE_COMMIT
+          esp_idf=v5.4.1
+          tdeck_build=PASS
+          baseline_tests=PASS
+          simulator_tests=PASS
+          license_review=PASS
+          no_sd_dependency_review=PASS
+          hardware_no_sd_boot=UNVERIFIED
+          hardware_radio_ui=UNVERIFIED
+          EOF
+
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bramble-tdeck-baseline-${{ github.run_id }}
+          path: .baseline/artifacts/
+          if-no-files-found: error
+          retention-days: 30

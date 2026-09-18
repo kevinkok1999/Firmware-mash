@@ -1,0 +1,96 @@
+name: release-package
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: Release tier
+        required: true
+        default: BETA
+        type: choice
+        options:
+          - STABLE
+          - BETA
+          - LAB
+      region:
+        description: Region profile
+        required: true
+        default: EU868
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package-tdeck-plus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release preconditions
+        shell: bash
+        env:
+          RELEASE_TIER: ${{ inputs.tier }}
+          RELEASE_REGION: ${{ inputs.region }}
+        run: |
+          set -euo pipefail
+          test -s docs/BASELINE_APPROVED || {
+            echo 'BLOCKED: baseline approval missing.' >&2
+            exit 1
+          }
+          test -s docs/FINAL_CONTROLLER_REVIEW_2026-09-17.md || {
+            echo 'BLOCKED: final controller review missing.' >&2
+            exit 1
+          }
+          test -s docs/THREE_PHASE_IMPLEMENTATION_PLAN.md
+          test -s docs/FLASHER_RELEASE_CONTRACT.md
+          test -s docs/TEST_TRACEABILITY.md
+          test -s docs/BUILD_CONFIG_MATRIX.md
+          test -n "$RELEASE_REGION"
+
+          if [ "$RELEASE_TIER" = 'STABLE' ]; then
+            test -s docs/STABLE_RELEASE_EVIDENCE.md || {
+              echo 'BLOCKED: STABLE hardware/release evidence manifest missing.' >&2
+              exit 1
+            }
+          fi
+
+          test -s scripts/release-package.sh || {
+            echo 'BLOCKED: scripts/release-package.sh has not been implemented yet.' >&2
+            exit 1
+          }
+
+      - name: Execute complete Phase 3 gate
+        shell: bash
+        run: bash scripts/phase-gate.sh 3
+
+      - name: Build and package exact release
+        shell: bash
+        env:
+          RELEASE_TIER: ${{ inputs.tier }}
+          RELEASE_REGION: ${{ inputs.region }}
+        run: |
+          set -euo pipefail
+          bash scripts/release-package.sh \
+            --board tdeck-plus \
+            --region "$RELEASE_REGION" \
+            --tier "$RELEASE_TIER" \
+            --output dist/release
+
+      - name: Validate required package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/release/release-manifest.json
+          test -s dist/release/SHA256SUMS
+          test -s dist/release/flasher-manifest.json
+          test -s dist/release/README-RECOVERY.txt
+          find dist/release -maxdepth 1 -type f -name '*.bin' -size +0c | grep -q .
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-mash-tdeck-plus-${{ inputs.region }}-${{ inputs.tier }}-${{ github.sha }}
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 30

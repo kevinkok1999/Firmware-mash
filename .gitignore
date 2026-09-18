@@ -1,0 +1,44 @@
+# ESP-IDF / CMake
+build/
+build-*/
+sdkconfig
+sdkconfig.old
+sdkconfig.*
+!sdkconfig.defaults*
+managed_components/
+# Keep dependencies.lock tracked for reproducible application builds.
+
+# PlatformIO / Arduino experiments
+.pio/
+.vscode/.browse.c_cpp.db*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node tooling / simulator UI
+node_modules/
+dist/
+coverage/
+
+# Local environment and secrets
+.env
+.env.*
+*.pem
+*.key
+secrets.*
+
+# Editors / OS
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+# Test and debug artifacts
+*.log
+*.bin
+*.elf
+*.map
+artifacts/
