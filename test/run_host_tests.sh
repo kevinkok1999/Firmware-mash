@@ -39,6 +39,23 @@ include_flags=(-I"${repo_root}/components/mog_message_store/include")
   "${repo_root}/test/host/test_mog_receiver_store.c" \
   -o "${build_dir}/test_mog_receiver_store"
 
+# Exercise the authority seam end-to-end: a receive is not present/ACK eligible
+# until MessageStore owns durable RECEIVED truth; PRESENTED survives reboot and
+# lost ACK may be regenerated without creating a second chat item.
+"$cc_bin" "${common_flags[@]}" "${include_flags[@]}" \
+  -I"${repo_root}/components/mog_core/include" \
+  -I"${repo_root}/components/mog_dedup/include" \
+  -I"${repo_root}/components/mog_receive_flow/include" \
+  "${repo_root}/components/mog_core/mog_core.c" \
+  "${repo_root}/components/mog_dedup/mog_dedup.c" \
+  "${repo_root}/components/mog_message_store/mog_store_snapshot.c" \
+  "${repo_root}/components/mog_message_store/mog_store_journal.c" \
+  "${repo_root}/components/mog_message_store/mog_store_state.c" \
+  "${repo_root}/components/mog_message_store/mog_receiver_store.c" \
+  "${repo_root}/components/mog_receive_flow/mog_receive_flow.c" \
+  "${repo_root}/test/host/test_mog_receive_flow.c" \
+  -o "${build_dir}/test_mog_receive_flow"
+
 # Compile and exercise the bounded single-authority HybridRouter independently.
 "$cc_bin" "${common_flags[@]}" \
   -I"${repo_root}/components/mog_core/include" \
@@ -98,6 +115,7 @@ sed 's#"/spiffs/#"/tmp/mog-spiffs/#g' \
 "${build_dir}/test_mog_store_journal"
 "${build_dir}/test_mog_store_state"
 "${build_dir}/test_mog_receiver_store"
+"${build_dir}/test_mog_receive_flow"
 "${build_dir}/test_mog_router"
 "${build_dir}/test_mog_reliability"
 "${build_dir}/test_mog_dedup"
