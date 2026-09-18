@@ -116,13 +116,15 @@ int mog_dedup_mark_durable(mog_dedup_t *dedup, mog_message_key_t key,
     return MOG_DEDUP_OK;
 }
 
-int mog_dedup_mark_presented(mog_dedup_t *dedup, mog_message_key_t key)
+int mog_dedup_mark_presented_durable(mog_dedup_t *dedup,
+                                     mog_message_key_t key)
 {
     mog_dedup_entry_t *entry;
     if (dedup == NULL || !mog_message_key_is_valid(key)) return MOG_DEDUP_ERR_ARG;
     entry = find_mut(dedup, key);
     if (entry == NULL) return MOG_DEDUP_ERR_NOT_FOUND;
     if (!entry->durable) return MOG_DEDUP_ERR_NOT_DURABLE;
+    /* Caller contract: MessageStore already contains delivered_to_chat=true. */
     entry->delivered_to_chat = true;
     return MOG_DEDUP_OK;
 }
