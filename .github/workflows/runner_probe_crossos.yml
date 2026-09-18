@@ -1,0 +1,30 @@
+name: Cross OS Runner Probe
+
+on:
+  push:
+    branches:
+      - runner-probe-crossos
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo "linux runner assigned"
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - shell: pwsh
+        run: Write-Output "windows runner assigned"
+
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo "macos runner assigned"
