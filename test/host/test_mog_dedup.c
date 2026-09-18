@@ -23,7 +23,7 @@ int main(void)
     present = true; ack = true;
     assert(mog_dedup_receive(&d, key(7, 42), 100, &present, &ack) == MOG_DEDUP_OK);
     assert(!present && !ack);
-    assert(mog_dedup_mark_presented(&d, key(7, 42)) == MOG_DEDUP_ERR_NOT_DURABLE);
+    assert(mog_dedup_mark_presented_durable(&d, key(7, 42)) == MOG_DEDUP_ERR_NOT_DURABLE);
     assert(mog_dedup_mark_ack_sent(&d, key(7, 42)) == MOG_DEDUP_ERR_NOT_DURABLE);
 
     /* A duplicate racing persistence remains behind the same barrier. */
@@ -31,11 +31,12 @@ int main(void)
     assert(mog_dedup_receive(&d, key(7, 42), 101, &present, &ack) == MOG_DEDUP_DUPLICATE);
     assert(!present && !ack);
 
-    /* Once authoritative MessageStore commit succeeds, presentation and ACK
-     * become safe in that order. */
+    /* Once authoritative MessageStore receipt commit succeeds, presentation
+     * and ACK become eligible. Presentation suppression is committed only after
+     * MessageStore has separately recorded delivered_to_chat=true. */
     assert(mog_dedup_mark_durable(&d, key(7, 42), &present, &ack) == MOG_DEDUP_OK);
     assert(present && ack);
-    assert(mog_dedup_mark_presented(&d, key(7, 42)) == MOG_DEDUP_OK);
+    assert(mog_dedup_mark_presented_durable(&d, key(7, 42)) == MOG_DEDUP_OK);
     assert(mog_dedup_mark_ack_sent(&d, key(7, 42)) == MOG_DEDUP_OK);
 
     /* Same logical message over another transport never duplicates chat, but
@@ -51,17 +52,16 @@ int main(void)
     assert(mog_dedup_mark_durable(&d, key(8, 42), &present, &ack) == MOG_DEDUP_OK);
     assert(present && ack);
 
-    /* Receiver reboot after persistence but before presentation: restore says
-     * the record is durable and still needs presentation + ACK exactly once. */
+    /* Receiver reboot after receipt persistence but before presentation: store
+     * truth says presentation is still required. */
     mog_dedup_init(&d);
     assert(mog_dedup_restore(&d, key(9, 77), false, true, 250) == MOG_DEDUP_OK);
     present = false; ack = false;
     assert(mog_dedup_mark_durable(&d, key(9, 77), &present, &ack) == MOG_DEDUP_OK);
     assert(present && ack);
-    assert(mog_dedup_mark_presented(&d, key(9, 77)) == MOG_DEDUP_OK);
 
-    /* Receiver reboot after presentation: duplicate remains suppressed while
-     * still regenerating an ACK if the sender lost the previous one. */
+    /* Receiver reboot after MessageStore persisted presentation truth: duplicate
+     * is suppressed while an ACK can still be regenerated after loss. */
     mog_dedup_init(&d);
     assert(mog_dedup_restore(&d, key(7, 42), true, false, 100) == MOG_DEDUP_OK);
     present = true; ack = false;
