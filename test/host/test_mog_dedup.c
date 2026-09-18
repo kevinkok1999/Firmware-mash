@@ -18,8 +18,22 @@ int main(void)
 
     mog_dedup_init(&d);
 
-    /* First receipt presents once and requests an E2E ACK. */
+    /* First receipt is staged only: a crash here cannot have produced UI or
+     * E2E ACK evidence because MessageStore has not committed receiver truth. */
+    present = true; ack = true;
     assert(mog_dedup_receive(&d, key(7, 42), 100, &present, &ack) == MOG_DEDUP_OK);
+    assert(!present && !ack);
+    assert(mog_dedup_mark_presented(&d, key(7, 42)) == MOG_DEDUP_ERR_NOT_DURABLE);
+    assert(mog_dedup_mark_ack_sent(&d, key(7, 42)) == MOG_DEDUP_ERR_NOT_DURABLE);
+
+    /* A duplicate racing persistence remains behind the same barrier. */
+    present = true; ack = true;
+    assert(mog_dedup_receive(&d, key(7, 42), 101, &present, &ack) == MOG_DEDUP_DUPLICATE);
+    assert(!present && !ack);
+
+    /* Once authoritative MessageStore commit succeeds, presentation and ACK
+     * become safe in that order. */
+    assert(mog_dedup_mark_durable(&d, key(7, 42), &present, &ack) == MOG_DEDUP_OK);
     assert(present && ack);
     assert(mog_dedup_mark_presented(&d, key(7, 42)) == MOG_DEDUP_OK);
     assert(mog_dedup_mark_ack_sent(&d, key(7, 42)) == MOG_DEDUP_OK);
@@ -30,13 +44,24 @@ int main(void)
     assert(mog_dedup_receive(&d, key(7, 42), 200, &present, &ack) == MOG_DEDUP_DUPLICATE);
     assert(!present && ack);
 
-    /* Origin is part of identity: equal packet ids from different nodes are
-     * independent logical messages. */
+    /* Origin is part of identity. New origin is independently staged. */
+    present = true; ack = true;
     assert(mog_dedup_receive(&d, key(8, 42), 201, &present, &ack) == MOG_DEDUP_OK);
+    assert(!present && !ack);
+    assert(mog_dedup_mark_durable(&d, key(8, 42), &present, &ack) == MOG_DEDUP_OK);
     assert(present && ack);
 
-    /* Receiver reboot: restore durable presented truth, then duplicate packet
-     * remains suppressed while still regenerating an ACK. */
+    /* Receiver reboot after persistence but before presentation: restore says
+     * the record is durable and still needs presentation + ACK exactly once. */
+    mog_dedup_init(&d);
+    assert(mog_dedup_restore(&d, key(9, 77), false, true, 250) == MOG_DEDUP_OK);
+    present = false; ack = false;
+    assert(mog_dedup_mark_durable(&d, key(9, 77), &present, &ack) == MOG_DEDUP_OK);
+    assert(present && ack);
+    assert(mog_dedup_mark_presented(&d, key(9, 77)) == MOG_DEDUP_OK);
+
+    /* Receiver reboot after presentation: duplicate remains suppressed while
+     * still regenerating an ACK if the sender lost the previous one. */
     mog_dedup_init(&d);
     assert(mog_dedup_restore(&d, key(7, 42), true, false, 100) == MOG_DEDUP_OK);
     present = true; ack = false;
@@ -48,6 +73,7 @@ int main(void)
     for (i = 0; i < MOG_DEDUP_MAX_ENTRIES; ++i) {
         assert(mog_dedup_restore(&d, key(1, (uint64_t)i + 1u), true, false, 0) == MOG_DEDUP_OK);
     }
+    present = true; ack = true;
     assert(mog_dedup_receive(&d, key(2, 999), 0, &present, &ack) == MOG_DEDUP_ERR_FULL);
     assert(d.count == MOG_DEDUP_MAX_ENTRIES);
 
